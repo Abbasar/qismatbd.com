@@ -1,0 +1,28 @@
+{
+  "Dhaka": [
+    "Adabor", "Agargaon", "Azimpur", "Badda", "Bangshal", "Banani", "Banasree", "Baridhara", "Basabo", "Basundhara",
+    "Cantonment", "Chawkbazar", "Dakshinkhan", "Dania", "Darus Salam", "Demra", "Dhanmondi", "Gendaria", "Gulshan",
+    "Hazaribagh", "Jatrabari", "Kafrul", "Kalabagan", "Kadamtali", "Kamrangirchar", "Khilgaon", "Khilkhet", "Kotwali",
+    "Lalbagh", "Malibagh", "Mirpur", "Mohakhali", "Mohammadpur", "Motijheel", "Mugda", "New Market", "Niketon",
+    "Pallabi", "Paltan", "Ramna", "Rampura", "Rupnagar", "Sabujbagh", "Savar", "Shahbagh", "Shahjahanpur",
+    "Sher-e-Bangla Nagar", "Shyampur", "Sutrapur", "Tejgaon", "Tejgaon Industrial Area", "Turag", "Uttara", "Uttarkhan",
+    "Vatara", "Wari", "West Dhanmondi", "Zigatola", "Elephant Road", "Farmgate", "Kakrail", "Science Laboratory",
+    "Shyamoli", "Ring Road", "Bashundhara R/A", "Nikunja", "Uttara Sector 1", "Uttara Sector 7", "Dohs Baridhara"
+  ],
+  "Gazipur": [
+    "Joydebpur", "Kapasia", "Kaliganj", "Kaliakair", "Sreepur", "Tongi", "Gazipur Sadar", "Bason", "Chandona",
+    "Konabari", "Board Bazar", "Shafipur", "Pubail", "Bhawal"
+  ],
+  "Narayanganj": [
+    "Narayanganj Sadar", "Bandar", "Siddhirganj", "Fatullah", "Rupganj", "Sonargaon", "Araihazar", "Gognagar",
+    "Shitalakshya", "Pagla", "Kanchpur", "Adamjee", "Deobhog"
+  ],
+  "Chattogram": [
+    "Agrabad", "Akbar Shah", "Bakalia", "Bandar", "Bayezid", "Bhujpur", "Chandgaon", "Chawkbazar", "Double Mooring",
+    "EPZ", "Halishahar", "Hathazari", "Khulshi", "Kotwali", "Pahartali", "Panchlaish", "Patenga", "Patiya Sadar",
+    "Rampur", "Sadarghat", "Sholashahar"
+  ],
+  "Cumilla": [
+    "Kotbari", "Cantonment", "Jangalbari", "Nangalkot", "Burichang", "Debidwar", "Muradnagar", "Homna", "Meah Bazar"
+  ]
+}

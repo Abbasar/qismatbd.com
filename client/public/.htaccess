@@ -1,0 +1,12 @@
+# Apache (cPanel): React Router — serve index.html for client-side routes.
+# Upload this file with the contents of `client/dist/` to public_html (or subdomain root).
+# If the site lives in a subfolder (e.g. /shop), set RewriteBase to that path, e.g. RewriteBase /shop/
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>

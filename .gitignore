@@ -1,0 +1,63 @@
+# =============================================================================
+# Qismat-web — কী Git এ থাকবে vs থাকবে না (কম্পিউটার/ফোল্ডার হারালে Git = ব্যাকআপ)
+# =============================================================================
+#
+# ✅ GIT এ যাবে (কমিট হবে) — সোর্স, স্কিমা, ডক, টেমপ্লেট:
+#    • client/src, client/public, client/*.config.*, client/package.json, client/package-lock.json
+#    • client/.env.example, client/.env.production.example  (কপি করে আসল .env বানাবে)
+#    • server/ সব .js, routes, server/package.json, server/package-lock.json
+#    • server/.env.example, server/structure.sql, server/data.sql
+#    • রুট package.json, HOSTING.md, README, ইত্যাদি
+#
+# ❌ GIT এ যাবে না — এগুলো ক্লোনের পর আবার বানাতে হবে বা সার্ভারে আলাদা রাখবে:
+#    • আসল .env ফাইলগুলো (নিচের প্যাটার্ন) → .env.example / .env.production.example দেখে নতুন ফাইল বানাবেন
+#    • node_modules → প্রতিটি মেশিনে `npm install`
+#    • client/dist → প্রোডাকশনে `npm run build:client` (বা client এ vite build)
+#    • server/uploads এর ভেতরের ফাইল → ইউজার আপলোড; সার্ভার ব্যাকআপ আলাদা রাখুন
+#
+# ক্লোনের পর মিনিমাম: server/.env + client/.env (ডেভ) / client/.env.production (বিল্ড)
+#       npm install (রুট স্ক্রিপ্ট দেখুন), তারপর চালু। বিস্তারিত: HOSTING.md
+#
+# =============================================================================
+
+# --- সিক্রেট ও মেশিন-নির্দিষ্ট env (কখনো কমিট করবেন না) ---
+# দ্রষ্টব্য: blanket ".env.*" দেবেন না — তাহলে .env.example ও ইগনোর হয়ে যায়।
+.env
+.env.local
+.env.production
+server/.env
+client/.env
+client/.env.production
+client/.env.local
+client/.env.development.local
+client/.env.test.local
+client/.env.production.local
+
+# --- Dependencies (package-lock.json Git এ রাখুন — পুনরুৎপাদনযোগ্য ইনস্টল) ---
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# --- Frontend build (সোর্স থেকে আবার বিল্ড) ---
+client/dist/
+dist/
+
+# --- রানটাইম আপলোড (রিপো ভারী/ব্যক্তিগত ডাটা এড়াতে); ফোল্ডারটা .gitkeep দিয়ে ট্র্যাক ---
+server/uploads/*
+!server/uploads/.gitkeep
+
+# --- লগ ও ডিবাগ ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- OS / এডিটর জাঙ্ক ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- টেস্ট কভারেজ (জেনারেটেড) ---
+coverage/
+.nyc_output/

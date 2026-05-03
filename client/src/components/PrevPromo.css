@@ -1,0 +1,25 @@
+/* শুধু ছবি — বাজার স্টাইল ডট */
+.hero-swiper.hero-swiper--bazaar {
+  --swiper-theme-color: #b45309;
+}
+
+.hero-swiper.hero-swiper--bazaar .swiper-pagination {
+  bottom: 0.5rem !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.hero-swiper.hero-swiper--bazaar .swiper-pagination-bullet {
+  width: 7px;
+  height: 7px;
+  background: rgba(68, 64, 60, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+  opacity: 1;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.hero-swiper.hero-swiper--bazaar .swiper-pagination-bullet-active {
+  width: 22px;
+  border-radius: 3px;
+  background: #92400e;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+}

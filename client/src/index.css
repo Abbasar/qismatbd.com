@@ -1,0 +1,93 @@
+﻿@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --theme-primary: #ff5555;
+  --theme-peach: #ff937e;
+  --theme-sage: #59ac77;
+  --theme-sidebar: #ffffff;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  overflow-x: hidden;
+  /* Prevent fixed/sticky children from causing horizontal scroll on small viewports */
+  -webkit-overflow-scrolling: touch;
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+button,
+input,
+select,
+textarea {
+  @apply outline-none focus:ring-2 focus:ring-brand-400;
+}
+
+/* Avoid invisible native control text (common when bg is white / themed). */
+input,
+select,
+textarea {
+  @apply text-slate-900;
+}
+
+input::placeholder,
+textarea::placeholder {
+  @apply text-slate-400;
+}
+
+a,
+button {
+  @apply transition duration-200 ease-out;
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-sm border border-slate-200 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-brand-100;
+  }
+
+  .btn-primary {
+    @apply rounded-sm bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-brand-200 transition-all hover:bg-brand-600 hover:shadow-brand-300 active:scale-95 disabled:bg-slate-300 disabled:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply rounded-sm border border-slate-200 bg-white px-6 py-3 text-sm font-bold text-slate-700 transition-all hover:bg-slate-50 active:scale-95;
+  }
+
+  .nav-link {
+    @apply text-sm font-medium text-slate-600 transition-colors hover:text-brand-500;
+  }
+
+  .nav-link-active {
+    @apply text-sm font-bold text-brand-600;
+  }
+
+  .fade-in-up {
+    animation: fadeInUp 0.45s ease-out both;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .fade-in-up {
+    animation-duration: 0.3s;
+  }
+}

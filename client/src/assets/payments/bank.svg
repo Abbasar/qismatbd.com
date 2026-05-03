@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="56" viewBox="0 0 220 56" fill="none" role="img" aria-labelledby="t">
+  <title id="t">Bank</title>
+  <rect width="220" height="56" rx="10" fill="#0f172a"/>
+  <path fill="#f8fafc" d="M110 12 36 24v4h10v18H44v4h132v-4h-10V28h10v-4L110 12Zm-48 22h18v14H62V34Zm26 0h18v14H88V34Zm26 0h18v14h-18V34Zm26 0h18v14h-18V34Z"/>
+</svg>

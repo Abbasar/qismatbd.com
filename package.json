@@ -1,0 +1,11 @@
+{
+  "name": "qismat-web",
+  "private": true,
+  "description": "Root scripts — client build & server deps before uploading to shared hosting.",
+  "scripts": {
+    "install:server": "npm install --production --prefix server",
+    "install:client": "npm install --prefix client",
+    "build:client": "npm run build --prefix client",
+    "prepare:upload": "npm run install:server && npm run install:client && npm run build:client"
+  }
+}
