@@ -10,8 +10,17 @@ import {
   persistThemeCache,
 } from '../utils/theme';
 import { AdminTableSkeleton } from '../components/Skeletons';
+import AdminAnalyticsPanel from '../components/AdminAnalyticsPanel';
 import { displayPriceRange, formatPreorderDateLabel } from '../utils/productAvailability';
 import { parseCategoriesApiResponse } from '../utils/categories';
+import {
+  ADMIN_ANALYTICS_PREFS_LS_KEY,
+  loadAdminAnalyticsPrefs,
+  filterOrdersForAnalytics,
+  computeAdjustedRevenue,
+  analyticsPrefsAffectsRevenueDisplay,
+} from '../utils/adminAnalytics';
+import { downloadOrderPdf, printOrderSheet } from '../utils/orderPdf';
 
 const parseGalleryUrlLines = (raw) =>
   String(raw || '')
@@ -186,6 +195,7 @@ function Admin() {
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [adminBooting, setAdminBooting] = useState(true);
+  const [analyticsPrefs, setAnalyticsPrefs] = useState(loadAdminAnalyticsPrefs);
   const [themePrimary, setThemePrimary] = useState(DEFAULT_THEME.primary);
   const [themeSidebar, setThemeSidebar] = useState(DEFAULT_THEME.sidebar);
   const [heroEditor, setHeroEditor] = useState(() => [emptyHeroSlide(), emptyHeroSlide(), emptyHeroSlide()]);
@@ -291,6 +301,14 @@ function Admin() {
   useEffect(() => {
     fetchAdminData();
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ADMIN_ANALYTICS_PREFS_LS_KEY, JSON.stringify(analyticsPrefs));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [analyticsPrefs]);
 
   useEffect(() => {
     const urls = newGalleryFiles.map((f) => URL.createObjectURL(f));
@@ -1317,14 +1335,14 @@ function Admin() {
     }
   };
 
-  const analytics = useMemo(() => {
-    const revenue = orders.reduce((sum, order) => sum + Number(order.total_price || 0), 0);
-    const delivered = orders.filter((order) => order.status === 'Delivered').length;
-    const pending = orders.filter((order) => order.status === 'Pending').length;
-    const outOfStock = products.filter((product) => Number(product.stock) <= 0).length;
-    const avgOrderValue = orders.length ? revenue / orders.length : 0;
-    return { revenue, delivered, pending, outOfStock, avgOrderValue };
-  }, [orders, products]);
+  const overviewFilteredOrders = useMemo(
+    () => filterOrdersForAnalytics(orders, analyticsPrefs),
+    [orders, analyticsPrefs]
+  );
+  const { rawRevenue: overviewRawRevenue, adjustedRevenue: overviewAdjustedRevenue } = useMemo(
+    () => computeAdjustedRevenue(overviewFilteredOrders, analyticsPrefs),
+    [overviewFilteredOrders, analyticsPrefs]
+  );
 
   const visibleProducts = useMemo(() => {
     const q = query.toLowerCase();
@@ -1363,23 +1381,6 @@ function Admin() {
       return matchesQuery && matchesStatus;
     });
   }, [orders, query, orderStatusFilter]);
-
-  const salesByDay = useMemo(() => {
-    const keys = [];
-    const now = new Date();
-    for (let i = 6; i >= 0; i -= 1) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      keys.push(d.toISOString().slice(0, 10));
-    }
-    const map = Object.fromEntries(keys.map((k) => [k, 0]));
-    orders.forEach((o) => {
-      const day = String(o.created_at).slice(0, 10);
-      if (day in map) map[day] += Number(o.total_price || 0);
-    });
-    const max = Math.max(...Object.values(map), 1);
-    return keys.map((day) => ({ day, amount: map[day], pct: (map[day] / max) * 100 }));
-  }, [orders]);
 
   const exportToCsv = (filename, rows) => {
     const csv = rows.map((row) => row.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n');
@@ -1549,7 +1550,12 @@ function Admin() {
           </div>
           <div className="rounded-sm border border-slate-200 bg-white p-6 transition hover:-translate-y-1 hover:shadow-md">
             <p className="text-sm text-slate-500">Revenue</p>
-            <p className="mt-4 text-3xl font-semibold text-slate-900">৳{analytics.revenue.toFixed(2)}</p>
+            <p className="mt-4 text-3xl font-semibold text-slate-900">৳{overviewAdjustedRevenue.toFixed(2)}</p>
+            {analyticsPrefsAffectsRevenueDisplay(analyticsPrefs) ? (
+              <p className="mt-1 text-xs text-slate-500">
+                Same as Analytics tab · raw ৳{overviewRawRevenue.toFixed(2)}
+              </p>
+            ) : null}
           </div>
         </div>
         <div className="mt-6 rounded-sm border border-slate-200 bg-white p-4">
@@ -1627,75 +1633,16 @@ function Admin() {
           </div>
 
           {activeTab === 'analytics' && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-semibold text-slate-900">Business Analytics</h2>
-              <div className="grid gap-4 md:grid-cols-4">
-                <div className="rounded-sm border border-slate-200 bg-slate-50 p-5">
-                  <p className="text-sm text-slate-500">Delivered Orders</p>
-                  <p className="mt-2 text-2xl font-semibold text-sage-600">{analytics.delivered}</p>
-                </div>
-                <div className="rounded-sm border border-slate-200 bg-slate-50 p-5">
-                  <p className="text-sm text-slate-500">Pending Orders</p>
-                  <p className="mt-2 text-2xl font-semibold text-peach-700">{analytics.pending}</p>
-                </div>
-                <div className="rounded-sm border border-slate-200 bg-slate-50 p-5">
-                  <p className="text-sm text-slate-500">Out of Stock</p>
-                  <p className="mt-2 text-2xl font-semibold text-brand-600">{analytics.outOfStock}</p>
-                </div>
-                <div className="rounded-sm border border-slate-200 bg-slate-50 p-5">
-                  <p className="text-sm text-slate-500">Average Order Value</p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-900">৳{analytics.avgOrderValue.toFixed(2)}</p>
-                </div>
-              </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35 }}
-                className="rounded-sm border border-slate-200 bg-white p-6 shadow-sm"
-              >
-                <p className="text-sm font-semibold text-slate-900">Sales trend</p>
-                <p className="text-xs text-slate-500">Last 7 days (৳ from orders)</p>
-                <div className="mt-6 flex h-52 items-end gap-2 sm:gap-3">
-                  {salesByDay.map(({ day, amount, pct }) => (
-                    <div key={day} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-                      <div
-                        className="w-full max-w-12 rounded-t-xl bg-gradient-to-t from-slate-900 to-brand-500 transition-all"
-                        style={{ height: `${Math.max(pct, 6)}%` }}
-                        title={`${day}: ৳${amount.toFixed(0)}`}
-                      />
-                      <span className="truncate text-[10px] font-medium text-slate-400">{day.slice(8)}</span>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <button
-                  onClick={() =>
-                    exportToCsv('products-export.csv', [
-                      ['ID', 'Name', 'Price', 'Status'],
-                      ...products.map((p) => [p.id, p.name, p.price, stockToAvailability(p.stock) === 'in' ? 'In stock' : 'Out of stock']),
-                    ])
-                  }
-                  className="rounded-sm bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  Export Products CSV
-                </button>
-                <button
-                  onClick={() => exportToCsv('users-export.csv', [['ID', 'Name', 'Email', 'Role'], ...users.map((u) => [u.id, u.name, u.email, u.role])])}
-                  className="rounded-sm bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  Export Users CSV
-                </button>
-                <button
-                  onClick={() => exportToCsv('orders-export.csv', [['ID', 'Customer', 'Status', 'Total'], ...orders.map((o) => [o.id, o.customer_name, o.status, o.total_price])])}
-                  className="rounded-sm bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  Export Orders CSV
-                </button>
-              </div>
-            </div>
+            <AdminAnalyticsPanel
+              orders={orders}
+              products={products}
+              users={users}
+              authHeaders={authHeaders}
+              onRefresh={fetchAdminData}
+              exportToCsv={exportToCsv}
+              analyticsPrefs={analyticsPrefs}
+              setAnalyticsPrefs={setAnalyticsPrefs}
+            />
           )}
 
           {activeTab === 'products' && (
@@ -2808,6 +2755,20 @@ function Admin() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => printOrderSheet(order)}
+                        className="rounded-sm border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                      >
+                        Print
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadOrderPdf(order)}
+                        className="rounded-sm border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+                      >
+                        Download PDF
+                      </button>
                       {(order.status === 'Pending' || order.status === 'Processing') && (
                         <button
                           disabled={savingId === order.id}

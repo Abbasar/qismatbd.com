@@ -117,6 +117,26 @@ router.post('/steadfast/bulk-dispatch', requireAuth, requireAdmin, async (req, r
   }
 });
 
+/**
+ * Permanently remove every order (and cascading payment rows). Irreversible.
+ * Body: { confirmPhrase: "DELETE ALL ORDERS" }
+ */
+router.delete('/admin/all', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const phrase = String(req.body?.confirmPhrase ?? '').trim();
+    if (phrase !== 'DELETE ALL ORDERS') {
+      return res.status(400).json({
+        message: 'Send JSON body { "confirmPhrase": "DELETE ALL ORDERS" } to confirm.',
+      });
+    }
+    const [result] = await db.query('DELETE FROM orders');
+    const deleted = Number(result?.affectedRows ?? 0);
+    res.json({ message: 'All orders deleted', deleted });
+  } catch (error) {
+    return sendServerError(res, 'Unable to delete all orders', error);
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const [rows] = await db.query('SELECT * FROM orders WHERE id = ?', [req.params.id]);
