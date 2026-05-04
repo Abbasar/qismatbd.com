@@ -7,11 +7,12 @@ import Sidecart from './Sidecart';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { DEFAULT_STORE_CONTACT } from '../constants/storeContact';
 import { useStorefront } from '../context/StorefrontContext';
+import { parseCategoriesApiResponse } from '../utils/categories';
 
 const megaLinks = [
   { label: 'New in', hint: 'Latest drops', to: '/shop', accent: 'from-brand-500/90 to-peach-500/90' },
-  { label: 'Under ৳1000', hint: 'Smart picks', to: '/shop?price=0-1000', accent: 'from-sage-500/90 to-sage-400/90' },
-  { label: 'Mid range', hint: '৳1000 – ৳3000', to: '/shop?price=1000-3000', accent: 'from-brand-600/90 to-sage-500/90' },
+  { label: 'Qismat', hint: 'Brand', to: '/shop?brand=2', accent: 'from-sage-500/90 to-sage-400/90' },
+  { label: 'Yes', hint: 'Brand', to: '/shop?brand=3', accent: 'from-brand-600/90 to-sage-500/90' },
   { label: 'Shop all', hint: 'Full catalog', to: '/shop', accent: 'from-peach-500/90 to-brand-500/90' },
 ];
 
@@ -87,7 +88,8 @@ function Header() {
         const res = await fetchWithTimeout(apiUrl('/api/products/meta/categories'));
         if (!res.ok) throw new Error('categories');
         const data = await res.json();
-        setCategories(Array.isArray(data) ? data : []);
+        const { categories } = parseCategoriesApiResponse(data);
+        setCategories(categories);
       } catch {
         setCategories([]);
       }
@@ -197,6 +199,9 @@ function Header() {
                     <Link to="/about" onClick={() => setIsMenuOpen(false)} className="rounded-sm px-3 py-3 text-base font-medium text-slate-800 hover:bg-brand-600/10">
                       About
                     </Link>
+                    <Link to="/gallery" onClick={() => setIsMenuOpen(false)} className="rounded-sm px-3 py-3 text-base font-medium text-slate-800 hover:bg-brand-600/10">
+                      Gallery
+                    </Link>
                     <Link to="/cart" onClick={() => setIsMenuOpen(false)} className="rounded-sm px-3 py-3 text-base font-medium text-slate-800 hover:bg-brand-600/10">
                       Cart
                     </Link>
@@ -286,6 +291,12 @@ function Header() {
               className="rounded-sm px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-brand-600/10 hover:text-slate-900"
             >
               About
+            </Link>
+            <Link
+              to="/gallery"
+              className="rounded-sm px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-brand-600/10 hover:text-slate-900"
+            >
+              Gallery
             </Link>
 
             <AnimatePresence>

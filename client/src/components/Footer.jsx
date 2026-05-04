@@ -64,9 +64,9 @@ function Footer() {
                 className="h-8 w-auto max-w-[140px] object-contain object-left opacity-95"
               />
             </Link>
-            <p className="mt-4 text-sm leading-relaxed text-slate-600">
-              Minimal commerce with a calm, confident experience — fast checkout, transparent delivery, and products you will want to keep.
-            </p>
+            <p className="mt-4 text-lg font-semibold leading-relaxed text-slate-600">
+              Purity is our promise,
+            <br /> quality is our business.</p>
             <div className="mt-5 flex flex-wrap gap-2">
               <a href={store.facebookUrl} target="_blank" rel="noopener noreferrer" className={socialClass} aria-label="Facebook">
                 <SocialIconFacebook />
@@ -93,8 +93,8 @@ function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/shop?price=0-1000" className="font-medium text-slate-700 hover:text-brand-600">
-                  Under ৳1000
+                <Link to="/shop?brand" className="font-medium text-slate-700 hover:text-brand-600">
+                  All Brands
                 </Link>
               </li>
               <li>
@@ -103,14 +103,14 @@ function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/checkout" className="font-medium text-slate-700 hover:text-brand-600">
-                  Checkout
+                <Link to="/wishlist" className="font-medium text-slate-700 hover:text-brand-600">
+                  Wishlist
                 </Link>
               </li>
             </ul>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Company</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500"> <a href="https://hafblbd.com" target="_blank" rel="noopener noreferrer" className=" hover:text-brand-600">Company</a></p>
             <ul className="mt-4 space-y-2 text-sm">
               <li>
                 <Link to="/about" className="font-medium text-slate-700 hover:text-brand-600">
@@ -118,26 +118,43 @@ function Footer() {
                 </Link>
               </li>
               <li>
+                <Link to="/gallery" className="font-medium text-slate-700 hover:text-brand-600">
+                  Gallery
+                </Link>
+              </li>
+              <li>
                 <Link to="/login" className="font-medium text-slate-700 hover:text-brand-600">
-                  Account
+                  My Account
                 </Link>
               </li>
             </ul>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Visit us</p>
+            <p className="mt-4 text-lg font-semibold leading-relaxed text-slate-600">
+              <a href="https://hafblbd.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-slate-800 hover:text-brand-600">Hossain ALi Food & Beverage Ltd.</a></p>
             <p className="mt-4 text-sm leading-relaxed text-slate-600">{store.address}</p>
             <p className="mt-3 text-sm">
+              phone:
               <a href={phoneHref} className="font-semibold text-slate-800 hover:text-brand-600">
                 {store.phoneTel.replace(/^tel:/, '')}
               </a>
             </p>
-            <Link
-              to="/"
-              className="mt-5 inline-flex rounded-sm border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm hover:border-brand-300 hover:bg-peach-50 hover:text-brand-700"
+            <p className="mt-3 text-sm">
+              email: <a href={`mailto:hafblbd@gmail.com`} className="font-semibold text-slate-800 hover:text-brand-600">hafblbd@gmail.com</a>
+            </p>
+            <button
+              type="button"
+              aria-label="Back to top"
+              onClick={() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                document.documentElement.scrollTop = 0;
+                document.body.scrollTop = 0;
+              }}
+              className="mt-5 inline-flex rounded-sm border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm transition hover:border-brand-300 hover:bg-peach-50 hover:text-brand-700"
             >
               Back to top
-            </Link>
+            </button>
           </div>
         </div>
         <FooterMiniPaymentLogos />

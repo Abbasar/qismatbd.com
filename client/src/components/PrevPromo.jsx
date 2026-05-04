@@ -38,7 +38,10 @@ function normalizeSlides(raw) {
   return cleaned.length ? cleaned : null;
 }
 
-const PrevPromo = () => {
+/**
+ * Optional `children` render over the hero image (e.g. categories), typically bottom-centered.
+ */
+const PrevPromo = ({ children = null }) => {
   const [slides, setSlides] = useState(DEFAULT_SLIDES);
 
   useEffect(() => {
@@ -76,36 +79,47 @@ const PrevPromo = () => {
       aria-label="মূল ছবি"
     >
       {/* ঘরের বাজার স্টাইল: সাদা কান্তা, পাতলা কাঠের রিং, ভেতরে শুধু ছবি */}
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto max-w-7xl pb-14 sm:pb-16 md:pb-[4.5rem]">
         <div className="hero-bazaar-frame rounded-sm border-2 border-stone-300/90 bg-gradient-to-b from-amber-50/80 to-stone-100/90 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] sm:p-2">
-          <div className="overflow-hidden rounded-[2px] border border-stone-600/20 bg-stone-200/60 ring-1 ring-black/5">
-            <Swiper
-              modules={[Autoplay, Pagination]}
-              loop
-              speed={700}
-              slidesPerView={1}
-              spaceBetween={0}
-              autoplay={{
-                delay: 5000,
-                disableOnInteraction: false,
-                pauseOnMouseEnter: true,
-              }}
-              pagination={{ clickable: true }}
-              className="hero-swiper hero-swiper--bazaar w-full"
-            >
-              {slides.map((slide, idx) => (
-                <SwiperSlide key={`${slide.image}-${idx}`} className="!h-auto">
-                  <div className="relative aspect-[5/3] w-full sm:aspect-[21/9] md:aspect-[2.35/1]">
-                    <img
-                      src={resolveImageUrl(slide.image)}
-                      alt={slide.alt}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      loading={idx === 0 ? 'eager' : 'lazy'}
-                    />
-                  </div>
-                </SwiperSlide>
-              ))}
-            </Swiper>
+          <div className="relative rounded-[2px] border border-stone-600/20 bg-stone-200/60 ring-1 ring-black/5">
+            <div className="overflow-hidden rounded-[2px]">
+              <Swiper
+                modules={[Autoplay, Pagination]}
+                loop
+                speed={700}
+                slidesPerView={1}
+                spaceBetween={0}
+                autoplay={{
+                  delay: 5000,
+                  disableOnInteraction: false,
+                  pauseOnMouseEnter: true,
+                }}
+                pagination={{ clickable: true }}
+                className="hero-swiper hero-swiper--bazaar w-full"
+              >
+                {slides.map((slide, idx) => (
+                  <SwiperSlide key={`${slide.image}-${idx}`} className="!h-auto">
+                    <div className="relative aspect-[5/3] w-full sm:aspect-[21/9] md:aspect-[2.35/1]">
+                      <img
+                        src={resolveImageUrl(slide.image)}
+                        alt={slide.alt}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        loading={idx === 0 ? 'eager' : 'lazy'}
+                      />
+                    </div>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
+            </div>
+            {children ? (
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] flex justify-center px-2 sm:px-4"
+                aria-label="ক্যাটাগরি"
+                style={{ transform: 'translateY(52%)' }}
+              >
+                <div className="pointer-events-none w-full max-w-5xl">{children}</div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

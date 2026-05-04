@@ -7,15 +7,15 @@ function About() {
       <div className="text-center mb-16">
         <p className="text-sm uppercase tracking-[0.25em] text-sage-600">About Us</p>
         <h1 className="text-4xl font-bold mt-2">Our Story</h1>
-        <p className="text-stone-600 mt-4 text-lg">Qismat is your destination for quality products and exceptional service.</p>
+        <p className="text-stone-600 mt-4 text-lg">Qismat is your destination for quality products.</p>
       </div>
 
-      {/* Who We Are */}
+      {/* Who We Are — image on top, copy below */}
       <section className="mb-16">
-        <div className="grid items-center gap-8 md:grid-cols-2 lg:gap-10">
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-sm border border-stone-200/80 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.35)]">
+        <div className="flex flex-col gap-8 lg:gap-10">
+          <div className="relative aspect-[4/3] w-full max-w-4xl shrink-0 overflow-hidden rounded-sm border border-stone-200/80 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.35)] sm:mx-auto">
             <img
-              src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1200&q=80"
+              src="images/promo-1.webp"
               alt="Qismat — thoughtful commerce and teamwork"
               className="absolute inset-0 h-full w-full object-cover"
               loading="lazy"
@@ -23,11 +23,10 @@ function About() {
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-brand-900/25 via-transparent to-sage-600/15" />
           </div>
-          <div>
+          <div className="max-w-3xl sm:mx-auto">
             <h2 className="text-3xl font-bold text-stone-900 mb-4">Who We Are</h2>
             <p className="text-stone-600 mb-4">
-              Qismat is an e-commerce platform dedicated to bringing quality products to customers across Bangladesh. 
-              We started with a simple mission: to make online shopping convenient, affordable, and accessible to everyone.
+            QISMAT is the signature fruit brand of Hossain Ali Food & Beverage Ltd., representing a commitment to natural purity, premium quality, and trust. The brand was created to deliver fresh, healthy, and carefully cultivated fruits directly to consumers under a unified and reliable identity. All QISMAT fruits are produced in company-owned orchards located in the Chittagong Hill Tracts. Grown on fertile hill land and nurtured under controlled agricultural practices, the fruits benefit from a favorable climate and rich soil conditions. This ensures superior taste, freshness, and nutritional value. Under the QISMAT brand, Hossain Ali Food & Beverage Ltd. markets and sells a wide range of fruits, with a strong focus on quality assurance at every stage—from cultivation and harvesting to sorting, packaging, and distribution. The company maintains strict standards to ensure that only the best produce reaches customers. QISMAT stands for: Naturally grown and carefully selected fruits Consistent quality and freshness Hygienic handling and packaging A trustworthy source backed by professional agro-management By combining modern agricultural techniques with a deep respect for nature, QISMAT aims to become a recognized and trusted fruit brand in both local and international markets.
             </p>
             <p className="text-stone-600 mb-4">
               Our team is passionate about customer satisfaction and committed to providing the best shopping experience. 
@@ -90,15 +89,15 @@ function About() {
         <div className="rounded-sm bg-gradient-to-br from-stone-900 to-stone-800 p-12 text-white">
           <div className="grid gap-6 text-center md:grid-cols-4 md:gap-8">
             <div>
-              <div className="text-4xl font-bold mb-2">10K+</div>
+              <div className="text-4xl font-bold mb-2">1K+</div>
               <p className="text-stone-400">Happy Customers</p>
             </div>
             <div>
-              <div className="text-4xl font-bold mb-2">500+</div>
+              <div className="text-4xl font-bold mb-2">100+</div>
               <p className="text-stone-400">Products</p>
             </div>
             <div>
-              <div className="text-4xl font-bold mb-2">50+</div>
+              <div className="text-4xl font-bold mb-2">10+</div>
               <p className="text-stone-400">Brands</p>
             </div>
             <div>
@@ -112,7 +111,7 @@ function About() {
       {/* Call to Action */}
       <section className="text-center">
         <h2 className="text-3xl font-bold text-stone-900 mb-4">Ready to Shop?</h2>
-        <p className="text-stone-600 mb-8">Explore our collection of premium products today.</p>
+        <p className="text-stone-600 mb-8">Explore our premium products today.</p>
         <Link
           to="/shop"
           className="inline-block rounded-sm bg-brand-600 px-8 py-4 font-semibold text-white transition hover:bg-brand-700"

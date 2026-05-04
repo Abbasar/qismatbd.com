@@ -110,12 +110,79 @@ const normalizeProduct = (row) => {
       o.pricing_options = Array.isArray(v) ? v : [];
     }
   }
+  const bidRaw = o.brand_id;
+  const bid = bidRaw != null && bidRaw !== '' ? Number(bidRaw) : null;
+  const hasJoinBrand =
+    Object.prototype.hasOwnProperty.call(o, 'brand_name') ||
+    Object.prototype.hasOwnProperty.call(o, 'brand_logo');
+  if (Number.isFinite(bid) && bid > 0) {
+    o.brand = {
+      id: bid,
+      name: hasJoinBrand ? String(o.brand_name ?? '').trim() : '',
+      logo_url: hasJoinBrand ? String(o.brand_logo ?? '').trim() : '',
+    };
+    o.brand_id = bid;
+  } else {
+    o.brand = null;
+    o.brand_id = null;
+  }
+  delete o.brand_name;
+  delete o.brand_logo;
   return o;
 };
 
+const PRODUCT_FROM =
+  'SELECT p.*, b.name AS brand_name, b.logo_url AS brand_logo FROM products p LEFT JOIN brands b ON b.id = p.brand_id';
+
+async function queryProductsJoined(sqlWithJoin, params, fallbackSql, fallbackParams = params) {
+  try {
+    const [rows] = await db.query(sqlWithJoin, params);
+    return rows;
+  } catch (e) {
+    if (e.code === 'ER_BAD_FIELD_ERROR' || e.code === '42S02') {
+      const [rows] = await db.query(fallbackSql, fallbackParams);
+      return rows;
+    }
+    throw e;
+  }
+}
+
 const CATALOG_EXTRA_CATEGORIES_KEY = 'catalog_extra_categories';
+const CATALOG_CATEGORY_IMAGES_KEY = 'catalog_category_images';
 /** Stored DB value when admin selects "In stock" (enough for order quantity checks). */
 const IN_STOCK_SENTINEL = 9999;
+
+async function getCategoryImagesMapFromDb() {
+  const [setRows] = await db.query('SELECT setting_value FROM settings WHERE setting_key = ?', [
+    CATALOG_CATEGORY_IMAGES_KEY,
+  ]);
+  const raw = setRows[0]?.setting_value;
+  if (!raw || typeof raw !== 'string') return {};
+  try {
+    const p = JSON.parse(raw);
+    if (p && typeof p === 'object' && !Array.isArray(p)) return { ...p };
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function normalizeCategoryImagesForResponse(mergedCategoryNames, rawMap) {
+  const src = rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap) ? rawMap : {};
+  const out = {};
+  for (const name of mergedCategoryNames) {
+    const key = Object.keys(src).find((k) => k.toLowerCase() === name.toLowerCase());
+    if (key && String(src[key]).trim()) out[name] = String(src[key]).trim();
+  }
+  return out;
+}
+
+async function saveCategoryImagesMap(map) {
+  await db.query(
+    'INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)',
+    [CATALOG_CATEGORY_IMAGES_KEY, JSON.stringify(map && typeof map === 'object' ? map : {})]
+  );
+}
 
 async function getMergedCategoryNames() {
   const [rows] = await db.query(
@@ -148,7 +215,9 @@ async function getMergedCategoryNames() {
 router.get('/meta/categories', async (req, res) => {
   try {
     const merged = await getMergedCategoryNames();
-    res.json(merged);
+    const raw = await getCategoryImagesMapFromDb();
+    const images = normalizeCategoryImagesForResponse(merged, raw);
+    res.json({ categories: merged, images });
   } catch (error) {
     res.status(500).json({ message: 'Unable to load categories', error: error.message });
   }
@@ -162,7 +231,13 @@ router.post('/meta/categories', requireAuth, requireAdmin, async (req, res) => {
 
     const mergedBefore = await getMergedCategoryNames();
     if (mergedBefore.some((c) => c.toLowerCase() === name.toLowerCase())) {
-      return res.json({ ok: true, categories: mergedBefore, message: 'Category already exists' });
+      const rawImg = await getCategoryImagesMapFromDb();
+      return res.json({
+        ok: true,
+        categories: mergedBefore,
+        images: normalizeCategoryImagesForResponse(mergedBefore, rawImg),
+        message: 'Category already exists',
+      });
     }
 
     const [setRows] = await db.query('SELECT setting_value FROM settings WHERE setting_key = ?', [
@@ -184,7 +259,12 @@ router.post('/meta/categories', requireAuth, requireAdmin, async (req, res) => {
     );
 
     const merged = await getMergedCategoryNames();
-    res.json({ ok: true, categories: merged });
+    const rawImg = await getCategoryImagesMapFromDb();
+    res.json({
+      ok: true,
+      categories: merged,
+      images: normalizeCategoryImagesForResponse(merged, rawImg),
+    });
   } catch (error) {
     return sendServerError(res, 'Unable to save category', error);
   }
@@ -218,6 +298,13 @@ router.delete('/meta/categories', requireAuth, requireAdmin, async (req, res) =>
       [CATALOG_EXTRA_CATEGORIES_KEY, JSON.stringify(list)]
     );
 
+    const imgRaw = await getCategoryImagesMapFromDb();
+    const imgNext = {};
+    for (const [k, v] of Object.entries(imgRaw)) {
+      if (k.toLowerCase() !== lower) imgNext[k] = v;
+    }
+    await saveCategoryImagesMap(imgNext);
+
     const [updResult] = await db.query(
       'UPDATE products SET category = ? WHERE LOWER(TRIM(category)) = LOWER(TRIM(?))',
       ['General', name]
@@ -225,15 +312,86 @@ router.delete('/meta/categories', requireAuth, requireAdmin, async (req, res) =>
     const reassigned = updResult && typeof updResult.affectedRows === 'number' ? updResult.affectedRows : 0;
 
     const merged = await getMergedCategoryNames();
-    res.json({ ok: true, categories: merged, reassigned });
+    res.json({
+      ok: true,
+      categories: merged,
+      images: normalizeCategoryImagesForResponse(merged, imgNext),
+      reassigned,
+    });
   } catch (error) {
     return sendServerError(res, 'Unable to delete category', error);
   }
 });
 
+router.post(
+  '/meta/categories/image',
+  requireAuth,
+  requireAdmin,
+  (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+      if (!err) return next();
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File too large (max 5MB)' });
+      }
+      return res.status(400).json({ message: err.message || 'Upload rejected' });
+    });
+  },
+  async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: 'No image file' });
+      const rawName = String(req.body.name || '').trim();
+      if (!rawName) return res.status(400).json({ message: 'Category name is required' });
+      const merged = await getMergedCategoryNames();
+      const match = merged.find((c) => c.toLowerCase() === rawName.toLowerCase());
+      if (!match) return res.status(400).json({ message: 'Unknown category' });
+      const raw = await getCategoryImagesMapFromDb();
+      const next = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (k.toLowerCase() !== match.toLowerCase()) next[k] = v;
+      }
+      next[match] = `/uploads/${req.file.filename}`;
+      await saveCategoryImagesMap(next);
+      const merged2 = await getMergedCategoryNames();
+      res.json({
+        ok: true,
+        categories: merged2,
+        images: normalizeCategoryImagesForResponse(merged2, next),
+      });
+    } catch (error) {
+      return sendServerError(res, 'Unable to save category image', error);
+    }
+  }
+);
+
+router.delete('/meta/categories/image', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) return res.status(400).json({ message: 'Category name is required' });
+    const raw = await getCategoryImagesMapFromDb();
+    const next = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (k.toLowerCase() !== name.toLowerCase()) next[k] = v;
+    }
+    await saveCategoryImagesMap(next);
+    const merged = await getMergedCategoryNames();
+    res.json({
+      ok: true,
+      categories: merged,
+      images: normalizeCategoryImagesForResponse(merged, next),
+    });
+  } catch (error) {
+    return sendServerError(res, 'Unable to remove category image', error);
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM products ORDER BY id DESC');
+    const rows = await queryProductsJoined(
+      `${PRODUCT_FROM} ORDER BY p.id DESC`,
+      [],
+      'SELECT * FROM products ORDER BY id DESC',
+      []
+    );
     res.json(rows.map(normalizeProduct));
   } catch (error) {
     res.status(500).json({ message: 'Unable to load products', error: error.message });
@@ -242,14 +400,28 @@ router.get('/', async (req, res) => {
 
 router.get('/highlights', async (req, res) => {
   try {
-    const [newArrivals] = await db.query('SELECT * FROM products ORDER BY created_at DESC, id DESC LIMIT 10');
-    const [popular] = await db.query(
+    const newArrivals = await queryProductsJoined(
+      `${PRODUCT_FROM} ORDER BY p.created_at DESC, p.id DESC LIMIT 10`,
+      [],
+      'SELECT * FROM products ORDER BY created_at DESC, id DESC LIMIT 10',
+      []
+    );
+    const popular = await queryProductsJoined(
+      `SELECT p.*, b.name AS brand_name, b.logo_url AS brand_logo, COUNT(r.id) AS review_count
+       FROM products p
+       LEFT JOIN brands b ON b.id = p.brand_id
+       LEFT JOIN reviews r ON r.product_id = p.id
+       GROUP BY p.id, b.name, b.logo_url
+       ORDER BY review_count DESC, p.created_at DESC
+       LIMIT 10`,
+      [],
       `SELECT p.*, COUNT(r.id) AS review_count
        FROM products p
        LEFT JOIN reviews r ON r.product_id = p.id
        GROUP BY p.id
        ORDER BY review_count DESC, p.created_at DESC
-       LIMIT 10`
+       LIMIT 10`,
+      []
     );
     res.json({
       newArrivals: newArrivals.map(normalizeProduct),
@@ -262,7 +434,12 @@ router.get('/highlights', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
+    const rows = await queryProductsJoined(
+      `${PRODUCT_FROM} WHERE p.id = ?`,
+      [req.params.id],
+      'SELECT * FROM products WHERE id = ?',
+      [req.params.id]
+    );
     if (!rows.length) return res.status(404).json({ message: 'Product not found' });
     res.json(normalizeProduct(rows[0]));
   } catch (error) {
@@ -275,6 +452,13 @@ const parsePreorderBody = (body) => {
   if (raw === '' || raw === undefined || raw === null) return null;
   const s = String(raw).trim().slice(0, 10);
   return s || null;
+};
+
+const parseBrandId = (body) => {
+  const raw = body.brand_id;
+  if (raw === '' || raw === undefined || raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
 };
 
 const parsePricingOptionsBody = (body) => {
@@ -298,6 +482,7 @@ const parsePricingOptionsBody = (body) => {
 router.post('/', requireAuth, requireAdmin, uploadFields, async (req, res) => {
   try {
     const { name, price, regular_price, description, stock, category } = req.body;
+    const brandId = parseBrandId(req.body);
     const preorderDate = parsePreorderBody(req.body);
     const pricingOptionsJson = parsePricingOptionsBody(req.body);
     const reg =
@@ -323,8 +508,8 @@ router.post('/', requireAuth, requireAdmin, uploadFields, async (req, res) => {
     let result;
     try {
       ;[result] = await db.query(
-        `INSERT INTO products (name, price, regular_price, image, gallery, sizes, colors, pricing_options, description, stock, preorder_available_date, category) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO products (name, price, regular_price, image, gallery, sizes, colors, pricing_options, description, stock, preorder_available_date, category, brand_id) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           name,
           price,
@@ -338,15 +523,41 @@ router.post('/', requireAuth, requireAdmin, uploadFields, async (req, res) => {
           stock,
           preorderDate,
           category || 'General',
+          brandId,
         ]
       );
     } catch (e) {
       if (e.code === 'ER_BAD_FIELD_ERROR') {
-        ;[result] = await db.query(
-          `INSERT INTO products (name, price, regular_price, image, gallery, sizes, colors, description, stock, preorder_available_date, category) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [name, price, reg, image, galleryJson, sizesJson, colorsJson, description, stock, preorderDate, category || 'General']
-        );
+        try {
+          ;[result] = await db.query(
+            `INSERT INTO products (name, price, regular_price, image, gallery, sizes, colors, pricing_options, description, stock, preorder_available_date, category) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              name,
+              price,
+              reg,
+              image,
+              galleryJson,
+              sizesJson,
+              colorsJson,
+              pricingOptionsJson,
+              description,
+              stock,
+              preorderDate,
+              category || 'General',
+            ]
+          );
+        } catch (e2) {
+          if (e2.code === 'ER_BAD_FIELD_ERROR') {
+            ;[result] = await db.query(
+              `INSERT INTO products (name, price, regular_price, image, gallery, sizes, colors, description, stock, preorder_available_date, category) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [name, price, reg, image, galleryJson, sizesJson, colorsJson, description, stock, preorderDate, category || 'General']
+            );
+          } else {
+            throw e2;
+          }
+        }
       } else {
         throw e;
       }
@@ -384,6 +595,7 @@ router.post('/', requireAuth, requireAdmin, uploadFields, async (req, res) => {
       description,
       stock,
       category: category || 'General',
+      brand_id: brandId,
     });
   } catch (error) {
     if (error.code === 'ER_BAD_FIELD_ERROR') {
@@ -400,6 +612,7 @@ router.post('/', requireAuth, requireAdmin, uploadFields, async (req, res) => {
 router.put('/:id', requireAuth, requireAdmin, uploadFields, async (req, res) => {
   try {
     const { name, price, regular_price, description, stock, category } = req.body;
+    const brandId = parseBrandId(req.body);
     const preorderDate = parsePreorderBody(req.body);
     const pricingOptionsJson = parsePricingOptionsBody(req.body);
     const reg =
@@ -440,7 +653,7 @@ router.put('/:id', requireAuth, requireAdmin, uploadFields, async (req, res) => 
 
     try {
       await db.query(
-        `UPDATE products SET name = ?, price = ?, regular_price = ?, image = ?, gallery = ?, sizes = ?, colors = ?, pricing_options = ?, description = ?, stock = ?, preorder_available_date = ?, category = ? WHERE id = ?`,
+        `UPDATE products SET name = ?, price = ?, regular_price = ?, image = ?, gallery = ?, sizes = ?, colors = ?, pricing_options = ?, description = ?, stock = ?, preorder_available_date = ?, category = ?, brand_id = ? WHERE id = ?`,
         [
           name,
           price,
@@ -454,15 +667,41 @@ router.put('/:id', requireAuth, requireAdmin, uploadFields, async (req, res) => 
           stock,
           preorderDate,
           category || 'General',
+          brandId,
           req.params.id,
         ]
       );
     } catch (e) {
       if (e.code === 'ER_BAD_FIELD_ERROR') {
-        await db.query(
-          `UPDATE products SET name = ?, price = ?, image = ?, gallery = ?, sizes = ?, colors = ?, description = ?, stock = ?, preorder_available_date = ?, category = ? WHERE id = ?`,
-          [name, price, image, galleryJson, sizesJson, colorsJson, description, stock, preorderDate, category || 'General', req.params.id]
-        );
+        try {
+          await db.query(
+            `UPDATE products SET name = ?, price = ?, regular_price = ?, image = ?, gallery = ?, sizes = ?, colors = ?, pricing_options = ?, description = ?, stock = ?, preorder_available_date = ?, category = ? WHERE id = ?`,
+            [
+              name,
+              price,
+              reg,
+              image,
+              galleryJson,
+              sizesJson,
+              colorsJson,
+              pricingOptionsJson,
+              description,
+              stock,
+              preorderDate,
+              category || 'General',
+              req.params.id,
+            ]
+          );
+        } catch (e2) {
+          if (e2.code === 'ER_BAD_FIELD_ERROR') {
+            await db.query(
+              `UPDATE products SET name = ?, price = ?, image = ?, gallery = ?, sizes = ?, colors = ?, description = ?, stock = ?, preorder_available_date = ?, category = ? WHERE id = ?`,
+              [name, price, image, galleryJson, sizesJson, colorsJson, description, stock, preorderDate, category || 'General', req.params.id]
+            );
+          } else {
+            throw e2;
+          }
+        }
       } else {
         throw e;
       }

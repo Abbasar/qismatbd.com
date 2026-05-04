@@ -7,8 +7,8 @@ import { addToCart, buyNow } from "../utils/cart";
 import { resolveImageUrl } from "../utils/image";
 import {
   canPurchaseProduct,
+  customerFacingStockLabel,
   displayPriceRange,
-  formatPreorderDateLabel,
   isPreorderProduct,
   withDefaultUnitSelection,
 } from "../utils/productAvailability";
@@ -162,11 +162,7 @@ const ProductCarousel = ({ title, subtitle, badge, products = [] }) => {
                     })()}
                   </p>
                   <span className="max-w-none text-[10px] leading-tight text-stone-500 sm:max-w-[10rem] sm:text-right sm:text-[11px]">
-                    {product.stock > 0
-                      ? `Stock: ${product.stock}`
-                      : isPreorderProduct(product)
-                        ? `Pre-order · ${formatPreorderDateLabel(product.preorder_available_date)}`
-                        : 'Out of stock'}
+                    {customerFacingStockLabel(product)}
                   </span>
                 </div>
                 <div className="mt-auto flex flex-col gap-1.5 sm:gap-2">

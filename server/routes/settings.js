@@ -30,6 +30,10 @@ const PUBLIC_SETTING_KEYS = new Set([
     'store_logo_url',
     'hero_slides',
     'advertise_unboxing_hero_image',
+    'advertise_unboxing_title',
+    'advertise_unboxing_subtitle',
+    'advertise_unboxing_media_type',
+    'advertise_unboxing_video_url',
     'advertise_newsletter_bg_image',
 ]);
 

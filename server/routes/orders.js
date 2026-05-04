@@ -16,6 +16,8 @@ const { computeCartSubtotalsForCoupon } = require('../utils/couponScope');
 const { sendFacebookPurchaseEvent } = require('../utils/facebookCapi');
 const router = express.Router();
 
+const RETURN_STATUSES = new Set(['none', 'requested', 'approved', 'received', 'closed']);
+
 function clientIp(req) {
   const x = req.headers['x-forwarded-for'];
   if (x) return String(x).split(',')[0].trim();
@@ -490,7 +492,15 @@ router.post('/', async (req, res) => {
 
 router.put('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { status, courier_name, tracking_number } = req.body;
+    const {
+      status,
+      courier_name,
+      tracking_number,
+      amount_paid: paidBody,
+      return_status: retBody,
+      return_notes: retNotesBody,
+      cancellation_reason: cancelBody,
+    } = req.body;
     if (!status) {
       return res.status(400).json({ message: 'Status is required' });
     }
@@ -499,17 +509,90 @@ router.put('/:id/status', requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ message: 'Invalid order status' });
     }
 
-    const [result] = await db.query(
-      'UPDATE orders SET status = ?, courier_name = ?, tracking_number = ? WHERE id = ?',
-      [status, courier_name || null, tracking_number || null, req.params.id]
-    );
+    const [rows] = await db.query('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+    const order = rows[0];
+    const total = Number(order.total_price);
+
+    let nextPaid = Number(order.amount_paid);
+    if (!Number.isFinite(nextPaid)) nextPaid = 0;
+    if (paidBody !== undefined && paidBody !== null && paidBody !== '') {
+      const p = Number(paidBody);
+      if (Number.isFinite(p)) nextPaid = Math.min(Math.max(0, p), total);
+    }
+
+    let nextRet = String(order.return_status || 'none').toLowerCase();
+    if (retBody !== undefined && retBody !== null && String(retBody).trim() !== '') {
+      const r = String(retBody).trim().toLowerCase();
+      if (!RETURN_STATUSES.has(r)) {
+        return res.status(400).json({ message: 'Invalid return_status' });
+      }
+      nextRet = r;
+    }
+
+    let nextRetNotes = order.return_notes ?? null;
+    if (retNotesBody !== undefined && retNotesBody !== null) {
+      const t = String(retNotesBody).trim();
+      nextRetNotes = t.length ? t.slice(0, 5000) : null;
+    }
+
+    let nextCancelReason = order.cancellation_reason ?? null;
+    if (status === 'Cancelled') {
+      if (cancelBody !== undefined && cancelBody !== null) {
+        const c = String(cancelBody).trim();
+        nextCancelReason = c.length ? c.slice(0, 2000) : null;
+      }
+    } else {
+      nextCancelReason = null;
+    }
+
+    const id = req.params.id;
+    const courierVal = courier_name != null && String(courier_name).trim() !== '' ? String(courier_name).trim() : null;
+    const trackVal =
+      tracking_number != null && String(tracking_number).trim() !== '' ? String(tracking_number).trim() : null;
+
+    let result;
+    try {
+      ;[result] = await db.query(
+        `UPDATE orders SET
+          status = ?,
+          courier_name = ?,
+          tracking_number = ?,
+          amount_paid = ?,
+          return_status = ?,
+          return_notes = ?,
+          cancellation_reason = ?,
+          cancelled_at = IF(? = 'Cancelled', COALESCE(cancelled_at, NOW()), NULL)
+        WHERE id = ?`,
+        [
+          status,
+          courierVal,
+          trackVal,
+          nextPaid,
+          nextRet,
+          nextRetNotes,
+          nextCancelReason,
+          status,
+          id,
+        ]
+      );
+    } catch (e) {
+      if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+      ;[result] = await db.query(
+        'UPDATE orders SET status = ?, courier_name = ?, tracking_number = ? WHERE id = ?',
+        [status, courierVal, trackVal, id]
+      );
+    }
+
     if (!result.affectedRows) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
     let steadfastAuto = null;
     if (status === 'Processing') {
-      steadfastAuto = await maybeAutoDispatchSteadfast(req.params.id);
+      steadfastAuto = await maybeAutoDispatchSteadfast(id);
     }
 
     res.json({

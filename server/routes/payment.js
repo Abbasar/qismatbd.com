@@ -70,7 +70,18 @@ router.post('/success/:orderId', async (req, res) => {
         const tran_id = validation.tran_id || req.body.tran_id || '';
         const card_type = validation.card_type || req.body.card_type || 'Online';
 
-        await db.query('UPDATE orders SET status = "Processing" WHERE id = ?', [orderId]);
+        try {
+            await db.query(
+                'UPDATE orders SET status = "Processing", amount_paid = ? WHERE id = ?',
+                [paidAmount, orderId]
+            );
+        } catch (e) {
+            if (e.code === 'ER_BAD_FIELD_ERROR') {
+                await db.query('UPDATE orders SET status = "Processing" WHERE id = ?', [orderId]);
+            } else {
+                throw e;
+            }
+        }
 
         maybeAutoDispatchSteadfast(orderId).catch(() => {});
 

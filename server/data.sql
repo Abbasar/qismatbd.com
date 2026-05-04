@@ -157,8 +157,28 @@ SELECT 'catalog_extra_categories', '[]'
 WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'catalog_extra_categories');
 
 INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'catalog_category_images', '{}'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'catalog_category_images');
+
+INSERT INTO `settings` (`setting_key`, `setting_value`)
 SELECT 'advertise_unboxing_hero_image', ''
 WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_hero_image');
+
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_title', 'Designed to feel as good as unboxing.'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_title');
+
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_subtitle', 'A quieter kind of commerce: editorial layouts, precise typography, and checkout that respects your time.'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_subtitle');
+
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_media_type', 'image'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_media_type');
+
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_video_url', ''
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_video_url');
 
 INSERT INTO `settings` (`setting_key`, `setting_value`)
 SELECT 'advertise_newsletter_bg_image', ''
@@ -190,6 +210,47 @@ INSERT INTO `coupons` (`code`, `discount_type`, `discount_value`, `min_subtotal`
 SELECT 'WELCOME10', 'percent', 10.00, 500.00, 1
 WHERE NOT EXISTS (SELECT 1 FROM `coupons` WHERE `code` = 'WELCOME10');
 
--- All products use General until you assign categories in Admin; clear admin-only category picker list
-UPDATE `products` SET `category` = 'General';
-UPDATE `settings` SET `setting_value` = '[]' WHERE `setting_key` = 'catalog_extra_categories';
+-- Fruit categories and sample fruit products
+UPDATE `settings`
+SET `setting_value` = '["Mango","Litchi","Jackfruit","Pineapple","Papaya","Banana","Guava","Dragon Fruit","Orange","Watermelon"]'
+WHERE `setting_key` = 'catalog_extra_categories';
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Haribhanga Mango (1kg)', 'SKU-FRUIT-MANGO-001', 220.00, 280.00, 'https://images.unsplash.com/photo-1553279768-865429fa0078?auto=format&fit=crop&w=1200&q=80', 'Sweet and juicy Haribhanga mango, freshly collected.', 'Mango', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-MANGO-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Bombai Litchi (500g)', 'SKU-FRUIT-LITCHI-001', 190.00, 240.00, 'https://images.unsplash.com/photo-1641823818171-80f667b6492f?auto=format&fit=crop&w=1200&q=80', 'Fresh seasonal Bombai litchi, hand sorted.', 'Litchi', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-LITCHI-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Ripe Jackfruit (piece)', 'SKU-FRUIT-JACK-001', 650.00, 790.00, 'https://images.unsplash.com/photo-1563114773-84221bd62daa?auto=format&fit=crop&w=1200&q=80', 'Naturally ripened jackfruit with rich flavor.', 'Jackfruit', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-JACK-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Sweet Pineapple (piece)', 'SKU-FRUIT-PINE-001', 140.00, 180.00, 'https://images.unsplash.com/photo-1589820296156-2454bb8a6ad1?auto=format&fit=crop&w=1200&q=80', 'Farm-fresh pineapple with balanced sweetness.', 'Pineapple', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-PINE-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Red Lady Papaya (1kg)', 'SKU-FRUIT-PAPAYA-001', 95.00, 120.00, 'https://images.unsplash.com/photo-1526318472351-c75fcf070305?auto=format&fit=crop&w=1200&q=80', 'Fresh papaya, perfect for breakfast and smoothies.', 'Papaya', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-PAPAYA-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Sagor Banana (12 pcs)', 'SKU-FRUIT-BANANA-001', 110.00, 135.00, 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=1200&q=80', 'Naturally ripened Sagor bananas, good energy source.', 'Banana', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-BANANA-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Thai Guava (1kg)', 'SKU-FRUIT-GUAVA-001', 130.00, 165.00, 'https://images.unsplash.com/photo-1594282486552-05a2fd3b4b04?auto=format&fit=crop&w=1200&q=80', 'Crispy and fresh Thai guava for healthy snacks.', 'Guava', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-GUAVA-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Dragon Fruit (piece)', 'SKU-FRUIT-DRAGON-001', 170.00, 220.00, 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?auto=format&fit=crop&w=1200&q=80', 'Premium dragon fruit with vibrant color and taste.', 'Dragon Fruit', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-DRAGON-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Imported Orange (1kg)', 'SKU-FRUIT-ORANGE-001', 260.00, 310.00, 'https://images.unsplash.com/photo-1580052614034-c55d20bfee3b?auto=format&fit=crop&w=1200&q=80', 'Juicy oranges ideal for direct eating or juice.', 'Orange', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-ORANGE-001');
+
+INSERT INTO `products` (`name`, `sku`, `price`, `regular_price`, `image`, `description`, `category`, `stock`)
+SELECT 'Red Watermelon (piece)', 'SKU-FRUIT-WM-001', 320.00, 380.00, 'https://images.unsplash.com/photo-1563114773-84221bd62daa?auto=format&fit=crop&w=1200&q=80', 'Hydrating and sweet watermelon, summer favorite.', 'Watermelon', 9999
+WHERE NOT EXISTS (SELECT 1 FROM `products` WHERE `sku` = 'SKU-FRUIT-WM-001');

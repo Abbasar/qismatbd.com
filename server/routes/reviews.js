@@ -18,6 +18,46 @@ router.get('/product/:productId', async (req, res) => {
   }
 });
 
+/** Public: recent approved reviews for storefront carousel (defined before GET /:id). */
+router.get('/storefront', async (req, res) => {
+  try {
+    const limit = Math.min(24, Math.max(1, Number(req.query.limit) || 16));
+    const sql = `
+      SELECT r.id, r.rating, r.title, r.comment, r.created_at,
+             u.name AS user_name,
+             p.id AS product_id, p.name AS product_name, p.image AS product_image
+      FROM reviews r
+      JOIN users u ON u.id = r.user_id
+      JOIN products p ON p.id = r.product_id
+      WHERE COALESCE(r.is_approved, 1) = 1
+      ORDER BY r.created_at DESC
+      LIMIT ?`;
+    const [rows] = await db.query(sql, [limit]);
+    res.json(rows);
+  } catch (error) {
+    if (error.code === 'ER_BAD_FIELD_ERROR') {
+      try {
+        const limit = Math.min(24, Math.max(1, Number(req.query.limit) || 16));
+        const [rows] = await db.query(
+          `SELECT r.id, r.rating, r.title, r.comment, r.created_at,
+                  u.name AS user_name,
+                  p.id AS product_id, p.name AS product_name, p.image AS product_image
+           FROM reviews r
+           JOIN users u ON u.id = r.user_id
+           JOIN products p ON p.id = r.product_id
+           ORDER BY r.created_at DESC
+           LIMIT ?`,
+          [limit]
+        );
+        return res.json(rows);
+      } catch (e2) {
+        return sendServerError(res, 'Unable to load storefront reviews', e2);
+      }
+    }
+    return sendServerError(res, 'Unable to load storefront reviews', error);
+  }
+});
+
 router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -91,14 +131,29 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const user_id = req.authUser.id;
-    const { product_id, rating, title, comment } = req.body;
-
-    if (!product_id || !comment?.trim()) {
-      return res.status(400).json({ message: 'Product and comment are required' });
+    const user_id = Number(req.authUser?.id);
+    if (!Number.isFinite(user_id) || user_id <= 0) {
+      return res.status(401).json({ message: 'Invalid session — please log in again' });
     }
-    if (!rating || rating < 1 || rating > 5) {
+
+    const product_id = Number(req.body.product_id);
+    const rating = Number(req.body.rating);
+    const titleRaw = req.body.title != null ? String(req.body.title).trim() : '';
+    const comment = String(req.body.comment ?? '').trim();
+
+    if (!Number.isFinite(product_id) || product_id <= 0) {
+      return res.status(400).json({ message: 'Valid product is required' });
+    }
+    if (!comment) {
+      return res.status(400).json({ message: 'Comment is required' });
+    }
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
       return res.status(400).json({ message: 'Rating must be between 1 and 5' });
+    }
+
+    const [pRows] = await db.query('SELECT id FROM products WHERE id = ? LIMIT 1', [product_id]);
+    if (!pRows.length) {
+      return res.status(400).json({ message: 'Product not found' });
     }
 
     const [existing] = await db.query(
@@ -109,12 +164,14 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ message: 'You already reviewed this product' });
     }
 
+    const title = titleRaw ? titleRaw.slice(0, 255) : null;
+
     const [result] = await db.query(
       'INSERT INTO reviews (product_id, user_id, rating, title, comment) VALUES (?, ?, ?, ?, ?)',
-      [product_id, user_id, rating, title || null, comment]
+      [product_id, user_id, Math.round(rating), title, comment]
     );
 
-    res.json({ id: result.insertId, product_id, user_id, rating, title, comment });
+    res.json({ id: result.insertId, product_id, user_id, rating: Math.round(rating), title, comment });
   } catch (error) {
     return sendServerError(res, 'Unable to create review', error);
   }

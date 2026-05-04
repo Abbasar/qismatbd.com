@@ -5,6 +5,17 @@ export function isPreorderProduct(product) {
   return d != null && String(d).trim() !== '';
 }
 
+/**
+ * Storefront stock badge — never shows unit counts.
+ * "Pre-order" when out of stock but a preorder date is set (still purchasable).
+ */
+export function customerFacingStockLabel(product) {
+  if (!product) return 'Out of stock';
+  if (Number(product.stock) > 0) return 'In stock';
+  if (isPreorderProduct(product)) return 'Pre-order';
+  return 'Out of stock';
+}
+
 /** Customer can add to cart / pre-order (in stock OR pre-order with date). */
 export function canPurchaseProduct(product) {
   if (!product) return false;

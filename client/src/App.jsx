@@ -15,6 +15,7 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import About from './pages/About';
+import Gallery from './pages/Gallery';
 import MyAccount from './pages/MyAccount';
 import Wishlist from './pages/Wishlist';
 import OrderSuccess from './pages/OrderSuccess';
@@ -53,6 +54,7 @@ function AppContent() {
             <Route path="/cart" element={<Cart />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/about" element={<About />} />
+            <Route path="/gallery" element={<Gallery />} />
             <Route
               path="/account"
               element={

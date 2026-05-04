@@ -8,13 +8,14 @@ import { ProductCardSkeleton } from '../components/Skeletons';
 import {
   canPurchaseProduct,
   displayPriceRange,
-  formatPreorderDateLabel,
+  customerFacingStockLabel,
   isPreorderProduct,
   withDefaultUnitSelection,
 } from '../utils/productAvailability';
 
 function Shop() {
   const [products, setProducts] = useState([]);
+  const [brandsList, setBrandsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addedProductId, setAddedProductId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -23,16 +24,18 @@ function Shop() {
   // Filters State
   const searchQuery = searchParams.get('search') || '';
   const categoryFilter = searchParams.get('category') || 'all';
+  const brandFilter = searchParams.get('brand') || 'all';
   const priceFilter = searchParams.get('price') || 'all';
   const currentPage = parseInt(searchParams.get('page')) || 1;
   const itemsPerPage = 6;
 
   useEffect(() => {
     setLoading(true);
-    fetchWithTimeout(apiUrl('/api/products'))
-      .then((res) => res.json())
-      .then((data) => {
+    Promise.all([fetchWithTimeout(apiUrl('/api/products')), fetchWithTimeout(apiUrl('/api/brands'))])
+      .then(([prodRes, brandRes]) => Promise.all([prodRes.json(), brandRes.ok ? brandRes.json() : []]))
+      .then(([data, brands]) => {
         setProducts(data);
+        setBrandsList(Array.isArray(brands) ? brands : []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -57,6 +60,16 @@ function Shop() {
       result = result.filter((p) => (p.category || 'General') === categoryFilter);
     }
 
+    if (brandFilter !== 'all') {
+      const bid = Number(brandFilter);
+      if (Number.isFinite(bid) && bid > 0) {
+        result = result.filter((p) => {
+          const pid = p.brand?.id != null ? Number(p.brand.id) : p.brand_id != null ? Number(p.brand_id) : NaN;
+          return Number.isFinite(pid) && pid === bid;
+        });
+      }
+    }
+
     if (priceFilter !== 'all') {
       const [minF, maxF] = priceFilter.split('-').map(Number);
       result = result.filter((p) => {
@@ -69,7 +82,7 @@ function Shop() {
     }
 
     return result;
-  }, [products, searchQuery, categoryFilter, priceFilter]);
+  }, [products, searchQuery, categoryFilter, brandFilter, priceFilter]);
 
   const paginatedProducts = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -100,7 +113,7 @@ function Shop() {
     <div className="space-y-4 fade-in-up sm:space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-1">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-sage-600">Premium Collection</p>
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-sage-600">Premium Items</p>
           <h1 className="text-3xl font-bold text-stone-900 sm:text-4xl">Our Shop</h1>
           {searchQuery && (
             <p className="text-stone-500">
@@ -114,7 +127,7 @@ function Shop() {
           <select
             value={categoryFilter}
             onChange={(e) => updateFilters('category', e.target.value)}
-            className="w-full min-h-[44px] rounded-sm border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm transition hover:border-sage-300 sm:w-auto sm:min-h-0 sm:px-4 sm:py-2.5 sm:text-sm"
+            className="w-full min-h-[44px] rounded-sm border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm transition hover:border-sage-300 sm:w-auto sm:min-h-0 sm:min-w-[160px] sm:px-4 sm:py-2.5 sm:text-sm"
           >
             <option value="all">All Categories</option>
             {categories.filter(c => c !== 'all').map(cat => (
@@ -123,16 +136,27 @@ function Shop() {
           </select>
 
           <select
+            value={brandFilter}
+            onChange={(e) => updateFilters('brand', e.target.value)}
+            className="w-full min-h-[44px] rounded-sm border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm transition hover:border-sage-300 sm:w-auto sm:min-h-0 sm:min-w-[160px] sm:px-4 sm:py-2.5 sm:text-sm"
+          >
+            <option value="all">All Brands</option>
+            {brandsList.map((b) => (
+              <option key={b.id} value={String(b.id)}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+
+          {/* <select
             value={priceFilter}
             onChange={(e) => updateFilters('price', e.target.value)}
-            className="w-full min-h-[44px] rounded-sm border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm transition hover:border-sage-300 sm:w-auto sm:min-h-0 sm:px-4 sm:py-2.5 sm:text-sm"
+            className="w-full min-h-[44px] rounded-sm border border-stone-200 bg-white px-3 py-2 text-xs font-medium text-stone-700 shadow-sm transition hover:border-sage-300 sm:w-auto sm:min-h-0 sm:min-w-[160px] sm:px-4 sm:py-2.5 sm:text-sm"
           >
             <option value="all">Any Price</option>
-            <option value="0-1000">Under ৳1000</option>
-            <option value="1000-3000">৳1000 - ৳3000</option>
             <option value="3000-5000">৳3000 - ৳5000</option>
             <option value="5000">Above ৳5000</option>
-          </select>
+          </select> */}
         </div>
       </div>
 
@@ -176,11 +200,7 @@ function Shop() {
                             : 'bg-brand-500 text-white'
                         }`}
                     >
-                      {product.stock > 0
-                        ? 'In Stock'
-                        : isPreorderProduct(product)
-                          ? `Pre-order · ${formatPreorderDateLabel(product.preorder_available_date)}`
-                          : 'Out of Stock'}
+                      {customerFacingStockLabel(product)}
                     </span>
                   </div>
                   <Link
@@ -198,7 +218,20 @@ function Shop() {
 
                 <div className="flex flex-1 flex-col p-2 pt-3 sm:p-4 sm:pt-6">
                   <div className="mb-1 flex flex-col gap-0.5 sm:mb-2 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="truncate text-[9px] font-bold uppercase tracking-wide text-sage-600 sm:text-[10px] sm:tracking-widest">{product.category || 'General'}</span>
+                    <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                      {/* <span className="truncate text-[9px] font-bold uppercase tracking-wide text-sage-600 sm:text-[10px] sm:tracking-widest">
+                        {product.category || 'General'}
+                      </span> */}
+                      {product.brand?.name ? (
+                        <Link
+                          to={`/shop?brand=${product.brand.id}`}
+                          className="truncate text-[9px] font-semibold uppercase tracking-wide text-brand-700 hover:underline sm:text-[10px]"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {product.brand.name}
+                        </Link>
+                      ) : null}
+                    </div>
                     <span className="text-sm font-bold text-stone-900 sm:text-lg">
                       {(() => {
                         const pr = displayPriceRange(product);

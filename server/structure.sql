@@ -8,7 +8,10 @@ USE `qismyirz_qismat`;
 -- settings.setting_key values used by the app (not all required on empty DB):
 --   Theme: theme_primary_color, theme_sidebar_color
 --   Storefront (public): store_business_address, store_phone_tel, store_whatsapp_tel, store_facebook_url, store_messenger_url
---   Categories: catalog_extra_categories (JSON array of admin-added names; merged with DISTINCT product.category + General)
+--   Categories: catalog_extra_categories (JSON array of admin-added names; merged with DISTINCT product.category + General),
+--               catalog_category_images (JSON object: category name → image URL path under /uploads/…)
+--   Brands: `brands` table (id, name, logo_url); `products.brand_id` optional FK-style reference
+--   Gallery: `gallery_items` (kind image|video, src path or https embed URL, caption, sort_order)
 --   Payments: ssl_store_id, ssl_store_password, ssl_is_live, is_payment_enabled
 --   Couriers API: steadfast_api_key, steadfast_secret_key, steadfast_api_base_url (default https://portal.packzy.com/api/v1; old portal.steadfast.com.bd is dead DNS),
 --                 steadfast_alternative_phone, steadfast_item_description_template, steadfast_total_lot_default,
@@ -29,6 +32,7 @@ ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `colors` JSON NULL AFTER `sizes`
 ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `regular_price` DECIMAL(10,2) NULL AFTER `price`;
 ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `preorder_available_date` DATE NULL AFTER `stock`;
 ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `pricing_options` JSON NULL AFTER `colors`;
+ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `brand_id` INT NULL AFTER `category`;
 ALTER TABLE `couriers` ADD COLUMN IF NOT EXISTS `shipping_inside_dhaka` DECIMAL(10,2) NULL AFTER `base_rate`;
 ALTER TABLE `couriers` ADD COLUMN IF NOT EXISTS `shipping_outside_dhaka` DECIMAL(10,2) NULL AFTER `shipping_inside_dhaka`;
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `delivery_method` VARCHAR(20) NULL AFTER `customer_address`;
@@ -37,6 +41,11 @@ ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `coupon_code` VARCHAR(80) NULL AFT
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `steadfast_invoice` VARCHAR(150) NULL AFTER `tracking_number`;
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `steadfast_consignment_id` VARCHAR(80) NULL AFTER `steadfast_invoice`;
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `courier_dispatch_error` TEXT NULL AFTER `steadfast_consignment_id`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `amount_paid` DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER `total_price`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `return_status` VARCHAR(40) NOT NULL DEFAULT 'none' AFTER `status`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `return_notes` TEXT NULL AFTER `return_status`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `cancellation_reason` TEXT NULL AFTER `return_notes`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `cancelled_at` TIMESTAMP NULL AFTER `cancellation_reason`;
 ALTER TABLE `coupons` ADD COLUMN IF NOT EXISTS `restrict_product_ids` JSON NULL AFTER `is_active`;
 ALTER TABLE `coupons` ADD COLUMN IF NOT EXISTS `restrict_categories` JSON NULL AFTER `restrict_product_ids`;
 ALTER TABLE `orders` MODIFY COLUMN `payment_type` VARCHAR(40) NOT NULL;
@@ -71,6 +80,7 @@ CREATE TABLE IF NOT EXISTS `products` (
   `pricing_options` JSON NULL,
   `description` TEXT,
   `category` VARCHAR(120) DEFAULT 'General',
+  `brand_id` INT NULL,
   `stock` INT NOT NULL DEFAULT 0,
   `preorder_available_date` DATE NULL,
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -110,7 +120,12 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `shipping_fee` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `discount_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `total_price` DECIMAL(10,2) NOT NULL,
+  `amount_paid` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   `status` ENUM('Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled') NOT NULL DEFAULT 'Pending',
+  `return_status` VARCHAR(40) NOT NULL DEFAULT 'none',
+  `return_notes` TEXT NULL,
+  `cancellation_reason` TEXT NULL,
+  `cancelled_at` TIMESTAMP NULL,
   `courier_name` VARCHAR(100),
   `tracking_number` VARCHAR(100) NULL UNIQUE,
   `note` TEXT,
@@ -142,9 +157,52 @@ CREATE TABLE IF NOT EXISTS `reviews` (
 CREATE TABLE IF NOT EXISTS `settings` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `setting_key` VARCHAR(100) NOT NULL UNIQUE,
-  `setting_value` TEXT,
+  `setting_value` LONGTEXT,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Legacy DB compatibility: allow larger values (video URLs / embed snippets / JSON payloads)
+ALTER TABLE `settings` MODIFY COLUMN `setting_value` LONGTEXT;
+
+-- Advertise/Homepage settings bootstrap (safe to run repeatedly)
+-- Legacy key rename compatibility (older DBs may have these keys)
+UPDATE `settings`
+SET `setting_key` = 'advertise_unboxing_video_url'
+WHERE `setting_key` = 'advertise_unboxing_video'
+  AND NOT EXISTS (
+    SELECT 1 FROM (SELECT `setting_key` FROM `settings`) AS s
+    WHERE s.`setting_key` = 'advertise_unboxing_video_url'
+  );
+
+UPDATE `settings`
+SET `setting_key` = 'advertise_newsletter_bg_image'
+WHERE `setting_key` = 'advertise_newsletter_bg'
+  AND NOT EXISTS (
+    SELECT 1 FROM (SELECT `setting_key` FROM `settings`) AS s
+    WHERE s.`setting_key` = 'advertise_newsletter_bg_image'
+  );
+
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_hero_image', ''
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_hero_image');
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_title', 'Designed to feel as good as unboxing.'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_title');
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_subtitle', 'A quieter kind of commerce: editorial layouts, precise typography, and checkout that respects your time.'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_subtitle');
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_media_type', 'image'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_media_type');
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_unboxing_video_url', ''
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_unboxing_video_url');
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'advertise_newsletter_bg_image', ''
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'advertise_newsletter_bg_image');
+INSERT INTO `settings` (`setting_key`, `setting_value`)
+SELECT 'hero_slides', '[]'
+WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `setting_key` = 'hero_slides');
 
 -- Table structure for table `wishlist`
 CREATE TABLE IF NOT EXISTS `wishlist` (
@@ -224,9 +282,29 @@ CREATE TABLE IF NOT EXISTS `email_verifications` (
   CONSTRAINT `fk_email_verifications_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE IF NOT EXISTS `brands` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(120) NOT NULL,
+  `logo_url` VARCHAR(500) NOT NULL DEFAULT '',
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_brands_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `gallery_items` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `kind` ENUM('image', 'video') NOT NULL DEFAULT 'image',
+  `src` VARCHAR(800) NOT NULL,
+  `caption` VARCHAR(255) NOT NULL DEFAULT '',
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_gallery_sort` (`sort_order`, `id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS `idx_users_role` ON `users` (`role`);
 CREATE INDEX IF NOT EXISTS `idx_products_category` ON `products` (`category`);
+CREATE INDEX IF NOT EXISTS `idx_products_brand_id` ON `products` (`brand_id`);
 CREATE INDEX IF NOT EXISTS `idx_products_stock` ON `products` (`stock`);
 CREATE INDEX IF NOT EXISTS `idx_orders_status` ON `orders` (`status`);
 CREATE INDEX IF NOT EXISTS `idx_orders_created_at` ON `orders` (`created_at`);

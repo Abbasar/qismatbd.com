@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { getAuthHeader, getCurrentUser } from '../utils/auth';
+import { getAuthHeader, getAuthToken, getCurrentUser } from '../utils/auth';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 
 function Reviews({ productId }) {
@@ -11,12 +11,19 @@ function Reviews({ productId }) {
   const user = getCurrentUser();
 
   useEffect(() => {
-    fetchReviews();
+    if (Number.isFinite(Number(productId)) && Number(productId) > 0) {
+      fetchReviews();
+    } else {
+      setLoading(false);
+      setReviews([]);
+    }
   }, [productId]);
 
   const fetchReviews = async () => {
+    const pid = Number(productId);
+    if (!Number.isFinite(pid) || pid <= 0) return;
     try {
-      const response = await fetchWithTimeout(apiUrl(`/api/reviews/product/${productId}`));
+      const response = await fetchWithTimeout(apiUrl(`/api/reviews/product/${pid}`));
       if (!response.ok) throw new Error('Unable to load reviews');
       setReviews(await response.json());
     } catch (error) {
@@ -29,9 +36,23 @@ function Reviews({ productId }) {
 
   const handleSubmitReview = async (e) => {
     e.preventDefault();
-    
+
     if (!user) {
-      toast.message('Please log in to submit a review');
+      toast.error('Please log in to submit a review');
+      return;
+    }
+    if (!getAuthToken()) {
+      toast.error('Session token missing — please log out and log in again, then try.');
+      return;
+    }
+    const pid = Number(productId);
+    if (!Number.isFinite(pid) || pid <= 0) {
+      toast.error('Invalid product — refresh the page and try again.');
+      return;
+    }
+    const comment = String(newReview.comment || '').trim();
+    if (!comment) {
+      toast.error('Please write a review comment.');
       return;
     }
 
@@ -40,30 +61,48 @@ function Reviews({ productId }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
-          product_id: productId,
+          product_id: pid,
           rating: Number(newReview.rating),
           title: newReview.title,
-          comment: newReview.comment,
+          comment,
         }),
       });
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
         setNewReview({ rating: 5, title: '', comment: '' });
         setMessage('Review submitted successfully.');
+        toast.success('Thank you — your review was saved.');
         fetchReviews();
+        return;
+      }
+      const msg = data.message || 'Unable to submit review right now.';
+      setMessage(msg);
+      if (response.status === 401) {
+        toast.error('Session expired — please log in again.');
       } else {
-        const data = await response.json();
-        setMessage(data.message || 'Unable to submit review right now.');
+        toast.error(msg);
       }
     } catch (error) {
       console.error('Error submitting review:', error);
       setMessage('Unable to submit review right now.');
+      toast.error('Network error — could not reach the server.');
     }
   };
 
   const avgRating = reviews.length > 0
     ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
     : 0;
+
+  const pidOk = Number.isFinite(Number(productId)) && Number(productId) > 0;
+
+  if (!pidOk) {
+    return (
+      <div className="rounded-sm border border-stone-200 bg-stone-50 p-5 text-sm text-stone-600">
+        Product reviews are unavailable.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 sm:space-y-6">

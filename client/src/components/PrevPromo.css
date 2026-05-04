@@ -3,9 +3,21 @@
   --swiper-theme-color: #b45309;
 }
 
+.hero-swiper.hero-swiper--bazaar {
+  position: relative;
+  z-index: 1;
+}
+
 .hero-swiper.hero-swiper--bazaar .swiper-pagination {
-  bottom: 0.5rem !important;
+  bottom: 2.75rem !important;
+  z-index: 20;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 640px) {
+  .hero-swiper.hero-swiper--bazaar .swiper-pagination {
+    bottom: 3rem !important;
+  }
 }
 
 .hero-swiper.hero-swiper--bazaar .swiper-pagination-bullet {

@@ -13,8 +13,8 @@ import { ProductShareAndTrust } from '../components/ProductShareAndTrust';
 import {
   canPurchaseProduct,
   displayPriceRange,
-  formatPreorderDateLabel,
   isPreorderProduct,
+  customerFacingStockLabel,
   maxOrderQuantity,
   withDefaultUnitSelection,
 } from '../utils/productAvailability';
@@ -358,7 +358,19 @@ function ProductPage() {
           >
             <div className="flex items-start gap-3 sm:gap-4">
               <div className="min-w-0 flex-1 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-600">{product.category || 'General'}</p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-brand-600">
+                    {product.category || 'General'}
+                  </p>
+                  {product.brand?.name ? (
+                    <Link
+                      to={`/shop?brand=${product.brand.id}`}
+                      className="text-xs font-semibold uppercase tracking-[0.2em] text-sage-700 underline-offset-2 hover:underline"
+                    >
+                      {product.brand.name}
+                    </Link>
+                  ) : null}
+                </div>
                 <h1 className="text-3xl font-semibold tracking-tight text-stone-900 sm:text-4xl">{product.name}</h1>
                 <p className="text-2xl font-semibold text-stone-900">
                   {product.regular_price != null && Number(product.regular_price) > unitPrice ? (
@@ -470,11 +482,7 @@ function ProductPage() {
                       : 'bg-brand-50 text-brand-700'
                 }`}
               >
-                {product.stock > 0
-                  ? `In stock · ${product.stock}`
-                  : showPreorder
-                    ? `Pre-order · Available from ${formatPreorderDateLabel(product.preorder_available_date)}`
-                    : 'Out of stock'}
+                {customerFacingStockLabel(product)}
               </span>
               <div className="flex items-center gap-2 rounded-sm border border-stone-200 px-2 py-1">
                 <button
@@ -538,7 +546,7 @@ function ProductPage() {
           <p className="mt-4 whitespace-pre-line leading-relaxed text-stone-600">{product.description}</p>
         </motion.section>
 
-        <Reviews productId={parseInt(id, 10)} />
+        <Reviews productId={Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0} />
 
         {relatedProducts.length > 0 && (
           <section>

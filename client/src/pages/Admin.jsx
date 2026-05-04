@@ -11,6 +11,7 @@ import {
 } from '../utils/theme';
 import { AdminTableSkeleton } from '../components/Skeletons';
 import { displayPriceRange, formatPreorderDateLabel } from '../utils/productAvailability';
+import { parseCategoriesApiResponse } from '../utils/categories';
 
 const parseGalleryUrlLines = (raw) =>
   String(raw || '')
@@ -70,6 +71,10 @@ const IMAGE_HINT_PRODUCT_GALLERY =
   'Same as main image or up to 1200px wide. You can add several; keep file size reasonable.';
 const IMAGE_HINT_SITE_LOGO =
   'PNG, WebP, or SVG with transparent background works well. ~200–400px wide; under 2MB. Shown in header, footer, and login.';
+const IMAGE_HINT_CATEGORY =
+  'Square ~400–800px looks best (shown as a circle on the homepage hero). JPG or WebP, max 5MB.';
+const IMAGE_HINT_BRAND_LOGO =
+  'Wide or square logo, transparent PNG/WebP ideal. Max 5MB — used on home and shop filters.';
 
 const emptyHeroSlide = () => ({
   image: '',
@@ -105,7 +110,19 @@ function Admin() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [expandedProductId, setExpandedProductId] = useState(null);
   const [categoriesList, setCategoriesList] = useState([]);
+  const [categoryImages, setCategoryImages] = useState({});
+  const [categoryImageUploading, setCategoryImageUploading] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [brandsList, setBrandsList] = useState([]);
+  const [newBrandNameInput, setNewBrandNameInput] = useState('');
+  const [brandLogoUploading, setBrandLogoUploading] = useState(null);
+  const [galleryItems, setGalleryItems] = useState([]);
+  const [galleryKind, setGalleryKind] = useState('image');
+  const [galleryCaption, setGalleryCaption] = useState('');
+  const [galleryEmbedUrl, setGalleryEmbedUrl] = useState('');
+  const [galleryFile, setGalleryFile] = useState(null);
+  const [galleryFileInputKey, setGalleryFileInputKey] = useState(0);
+  const [galleryLoading, setGalleryLoading] = useState(false);
   const [newProduct, setNewProduct] = useState({
     name: '',
     price: '',
@@ -114,6 +131,7 @@ function Admin() {
     availability: 'in',
     preorder_available_date: '',
     category: 'General',
+    brand_id: '',
     sizes: '',
     colors: '',
   });
@@ -155,7 +173,15 @@ function Admin() {
     restrict_categories: '',
   });
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [orderUpdate, setOrderUpdate] = useState({ status: '', courier_name: '', tracking_number: '' });
+  const [orderUpdate, setOrderUpdate] = useState({
+    status: '',
+    courier_name: '',
+    tracking_number: '',
+    amount_paid: '',
+    return_status: 'none',
+    return_notes: '',
+    cancellation_reason: '',
+  });
   const [settings, setSettings] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -171,10 +197,23 @@ function Admin() {
 
   const fetchAdminData = async () => {
     try {
-      const [productsRes, categoriesRes, usersRes, overviewRes, ordersRes, couriersRes, settingsRes, notificationsRes, unreadRes, couponsRes, reviewsAdminRes] =
-        await Promise.all([
+      const [
+        productsRes,
+        categoriesRes,
+        brandsRes,
+        usersRes,
+        overviewRes,
+        ordersRes,
+        couriersRes,
+        settingsRes,
+        notificationsRes,
+        unreadRes,
+        couponsRes,
+        reviewsAdminRes,
+      ] = await Promise.all([
         fetchWithTimeout(apiUrl('/api/products')),
         fetchWithTimeout(apiUrl('/api/products/meta/categories')),
+        fetchWithTimeout(apiUrl('/api/brands')),
         fetchWithTimeout(apiUrl('/api/users'), { headers: authHeaders }),
         fetchWithTimeout(apiUrl('/api/admin/overview'), { headers: authHeaders }),
         fetchWithTimeout(apiUrl('/api/orders'), { headers: authHeaders }),
@@ -189,7 +228,13 @@ function Admin() {
       setProducts(await productsRes.json());
       if (categoriesRes.ok) {
         const cats = await categoriesRes.json();
-        setCategoriesList(Array.isArray(cats) ? cats : []);
+        const { categories, images } = parseCategoriesApiResponse(cats);
+        setCategoriesList(categories);
+        setCategoryImages(images);
+      }
+      if (brandsRes.ok) {
+        const bl = await brandsRes.json();
+        setBrandsList(Array.isArray(bl) ? bl : []);
       }
       setUsers(await usersRes.json());
       setOverview(await overviewRes.json());
@@ -253,6 +298,26 @@ function Admin() {
     return () => urls.forEach((u) => URL.revokeObjectURL(u));
   }, [newGalleryFiles]);
 
+  useEffect(() => {
+    if (activeTab !== 'gallery') return undefined;
+    let cancelled = false;
+    (async () => {
+      setGalleryLoading(true);
+      try {
+        const res = await fetchWithTimeout(apiUrl('/api/gallery'));
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data)) setGalleryItems(data);
+      } catch {
+        if (!cancelled) toast.error('Could not load gallery');
+      } finally {
+        if (!cancelled) setGalleryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
   // Product Management
   const createProduct = async (event) => {
     event.preventDefault();
@@ -272,6 +337,8 @@ function Admin() {
       payload.append('preorder_available_date', sp.preorder_available_date || '');
       payload.append('description', newProduct.description);
       payload.append('category', newProduct.category || 'General');
+      if (newProduct.brand_id) payload.append('brand_id', String(newProduct.brand_id));
+      else payload.append('brand_id', '');
       payload.append('sizes', newProduct.sizes || '');
       payload.append('colors', newProduct.colors || '');
       const poJson = serializePricingOptionRows(newPricingOptionRows);
@@ -295,6 +362,7 @@ function Admin() {
         availability: 'in',
         preorder_available_date: '',
         category: 'General',
+        brand_id: '',
         sizes: '',
         colors: '',
       });
@@ -324,6 +392,7 @@ function Admin() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to add category');
       setCategoriesList(Array.isArray(data.categories) ? data.categories : []);
+      if (data.images && typeof data.images === 'object') setCategoryImages(data.images);
       setNewCategoryName('');
       setNewProduct((prev) => ({ ...prev, category: name }));
       if (editingProduct) {
@@ -362,6 +431,7 @@ function Admin() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || 'Failed to delete category');
       setCategoriesList(Array.isArray(data.categories) ? data.categories : []);
+      if (data.images && typeof data.images === 'object') setCategoryImages(data.images);
       setNewProduct((prev) => (prev.category === trimmed ? { ...prev, category: 'General' } : prev));
       setEditingProduct((prev) =>
         prev && prev.category === trimmed ? { ...prev, category: 'General' } : prev
@@ -371,6 +441,188 @@ function Admin() {
       await fetchAdminData();
     } catch (e) {
       toast.error(e.message || 'Could not delete category');
+    }
+  };
+
+  const uploadCatalogCategoryImage = async (categoryName, file) => {
+    if (!file || !categoryName) return;
+    setCategoryImageUploading(categoryName);
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      fd.append('name', categoryName);
+      const res = await fetch(apiUrl('/api/products/meta/categories/image'), {
+        method: 'POST',
+        headers: { ...authHeaders },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      setCategoriesList(Array.isArray(data.categories) ? data.categories : []);
+      if (data.images && typeof data.images === 'object') setCategoryImages(data.images);
+      toast.success('Category image saved');
+    } catch (e) {
+      toast.error(e.message || 'Could not upload category image');
+    } finally {
+      setCategoryImageUploading(null);
+    }
+  };
+
+  const clearCatalogCategoryImage = async (categoryName) => {
+    const name = String(categoryName || '').trim();
+    if (!name) return;
+    try {
+      const res = await fetch(apiUrl('/api/products/meta/categories/image'), {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Remove failed');
+      setCategoriesList(Array.isArray(data.categories) ? data.categories : []);
+      if (data.images && typeof data.images === 'object') setCategoryImages(data.images);
+      toast.success('Category image removed');
+    } catch (e) {
+      toast.error(e.message || 'Could not remove category image');
+    }
+  };
+
+  const addCatalogBrand = async () => {
+    const name = newBrandNameInput.trim();
+    if (!name) {
+      toast.error('Enter a brand name');
+      return;
+    }
+    try {
+      const res = await fetch(apiUrl('/api/brands'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Failed to add brand');
+      setBrandsList((prev) => [...prev.filter((b) => b.id !== data.id), data].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewBrandNameInput('');
+      setNewProduct((prev) => ({ ...prev, brand_id: String(data.id) }));
+      toast.success('Brand added — upload a logo below');
+    } catch (e) {
+      toast.error(e.message || 'Could not add brand');
+    }
+  };
+
+  const deleteCatalogBrand = async (id) => {
+    const bid = Number(id);
+    if (!Number.isFinite(bid)) return;
+    if (!window.confirm('Delete this brand? Products using it will have no brand assigned.')) return;
+    try {
+      const res = await fetch(apiUrl(`/api/brands/${bid}`), { method: 'DELETE', headers: authHeaders });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Delete failed');
+      setBrandsList((prev) => prev.filter((b) => b.id !== bid));
+      setNewProduct((prev) => (String(prev.brand_id) === String(bid) ? { ...prev, brand_id: '' } : prev));
+      setEditingProduct((prev) =>
+        prev && String(prev.brand_id) === String(bid) ? { ...prev, brand_id: '' } : prev
+      );
+      toast.success('Brand removed');
+      fetchAdminData();
+    } catch (e) {
+      toast.error(e.message || 'Could not delete brand');
+    }
+  };
+
+  const uploadBrandLogo = async (brandId, file) => {
+    if (!file || !brandId) return;
+    setBrandLogoUploading(brandId);
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      const res = await fetch(apiUrl(`/api/brands/${brandId}/logo`), {
+        method: 'POST',
+        headers: { ...authHeaders },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      setBrandsList((prev) => prev.map((b) => (b.id === brandId ? { ...b, ...data } : b)));
+      toast.success('Brand logo saved');
+    } catch (e) {
+      toast.error(e.message || 'Could not upload logo');
+    } finally {
+      setBrandLogoUploading(null);
+    }
+  };
+
+  const clearBrandLogo = async (brandId) => {
+    const bid = Number(brandId);
+    if (!Number.isFinite(bid)) return;
+    try {
+      const res = await fetch(apiUrl(`/api/brands/${bid}/logo`), {
+        method: 'DELETE',
+        headers: authHeaders,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Remove failed');
+      setBrandsList((prev) => prev.map((b) => (b.id === bid ? { ...b, logo_url: '' } : b)));
+      toast.success('Brand logo removed');
+    } catch (e) {
+      toast.error(e.message || 'Could not remove logo');
+    }
+  };
+
+  const addGalleryAdminItem = async (event) => {
+    event.preventDefault();
+    if (galleryKind === 'image' && !galleryFile) {
+      toast.error('Select an image file to upload');
+      return;
+    }
+    if (galleryKind === 'video' && !galleryFile && !galleryEmbedUrl.trim()) {
+      toast.error('Upload a video file or paste a YouTube / Vimeo / direct video URL');
+      return;
+    }
+    try {
+      setSavingId('gallery-add');
+      const fd = new FormData();
+      fd.append('kind', galleryKind);
+      fd.append('caption', galleryCaption);
+      if (galleryKind === 'video' && galleryEmbedUrl.trim()) {
+        fd.append('embed_url', galleryEmbedUrl.trim());
+      }
+      if (galleryFile) fd.append('file', galleryFile);
+      const res = await fetch(apiUrl('/api/gallery'), { method: 'POST', headers: authHeaders, body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Could not add gallery item');
+        return;
+      }
+      setGalleryItems((prev) => [data, ...prev]);
+      setGalleryCaption('');
+      setGalleryEmbedUrl('');
+      setGalleryFile(null);
+      setGalleryFileInputKey((k) => k + 1);
+      toast.success('Gallery item added');
+    } catch {
+      toast.error('Could not add gallery item');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const deleteGalleryAdminItem = async (id) => {
+    const gid = Number(id);
+    if (!Number.isFinite(gid)) return;
+    if (!window.confirm('Remove this gallery item?')) return;
+    try {
+      setSavingId(`gallery-del-${gid}`);
+      const res = await fetch(apiUrl(`/api/gallery/${gid}`), { method: 'DELETE', headers: authHeaders });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Delete failed');
+        return;
+      }
+      setGalleryItems((prev) => prev.filter((g) => g.id !== gid));
+      toast.success('Removed from gallery');
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -394,6 +646,8 @@ function Admin() {
       payload.append('preorder_available_date', sp.preorder_available_date || '');
       payload.append('description', editingProduct.description || '');
       payload.append('category', editingProduct.category || 'General');
+      if (editingProduct.brand_id) payload.append('brand_id', String(editingProduct.brand_id));
+      else payload.append('brand_id', '');
       const sizesStr = Array.isArray(editingProduct.sizes)
         ? editingProduct.sizes.join(',')
         : editingProduct.sizes || '';
@@ -872,7 +1126,15 @@ function Admin() {
         return;
       }
       setSelectedOrder(null);
-      setOrderUpdate({ status: '', courier_name: '', tracking_number: '' });
+      setOrderUpdate({
+        status: '',
+        courier_name: '',
+        tracking_number: '',
+        amount_paid: '',
+        return_status: 'none',
+        return_notes: '',
+        cancellation_reason: '',
+      });
       fetchAdminData();
       const auto = data.steadfast_auto_dispatch;
       if (orderUpdate.status === 'Processing' && auto && !auto.skipped && auto.ok === false) {
@@ -1095,7 +1357,8 @@ function Admin() {
         String(order.id).includes(q) ||
         order.customer_name?.toLowerCase().includes(q) ||
         order.customer_phone?.toLowerCase().includes(q) ||
-        order.courier_name?.toLowerCase().includes(q);
+        order.courier_name?.toLowerCase().includes(q) ||
+        String(order.return_status || '').toLowerCase().includes(q);
       const matchesStatus = orderStatusFilter === 'all' || order.status === orderStatusFilter;
       return matchesQuery && matchesStatus;
     });
@@ -1193,7 +1456,18 @@ function Admin() {
     }
   };
 
-  const navItems = ['analytics', 'products', 'users', 'orders', 'couriers', 'coupons', 'advertise', 'reviews', 'settings'];
+  const navItems = [
+    'analytics',
+    'products',
+    'users',
+    'orders',
+    'couriers',
+    'coupons',
+    'advertise',
+    'reviews',
+    'gallery',
+    'settings',
+  ];
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900">
@@ -1447,29 +1721,174 @@ function Admin() {
                   Add category
                 </button>
                 <p className="w-full text-xs text-slate-500">
-                  Add category names here; they appear in product dropdowns and on the home page (except General, which always stays). Remove with × — products using that tag move to General.
+                  Add category names here; they appear in product dropdowns and on the home hero (except General, which always stays). Delete category with × moves products to General. Upload a circle-friendly image per category for the storefront hero.
                 </p>
-                <div className="flex w-full flex-wrap gap-1.5">
-                  {(categoriesList.length ? categoriesList : ['General']).map((c) => {
+                <p className="w-full text-[11px] text-slate-400">{IMAGE_HINT_CATEGORY}</p>
+                <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {(categoriesList.length ? categoriesList : ['General']).map((c, idx) => {
                     const canDel = !BUILTIN_CATEGORY_KEYS.has(String(c).trim().toLowerCase());
+                    const img = String(categoryImages[c] || '').trim();
+                    const uploadId = `category-image-upload-${idx}`;
+                    const busy = categoryImageUploading === c;
                     return (
-                      <span
-                        key={c}
-                        className="inline-flex max-w-full items-center gap-0.5 rounded-sm border border-slate-200 bg-white pl-2 pr-0.5 py-0.5 text-[11px] font-medium text-slate-700"
+                      <div
+                        key={`${c}-${idx}`}
+                        className="flex flex-col gap-2 rounded-sm border border-slate-200 bg-white p-3 shadow-sm"
                       >
-                        <span className="truncate">{c}</span>
-                        {canDel ? (
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 flex-1 text-sm font-semibold text-slate-900" title={c}>
+                            {c}
+                          </p>
+                          {canDel ? (
+                            <button
+                              type="button"
+                              onClick={() => deleteCatalogCategory(c)}
+                              className="shrink-0 rounded-sm px-2 py-0.5 text-xs font-semibold text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                              title={`Delete category ${c}`}
+                              aria-label={`Delete category ${c}`}
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="relative mx-auto aspect-square w-full max-w-[140px] overflow-hidden rounded-full border border-slate-200 bg-slate-100">
+                          {img ? (
+                            <img
+                              src={resolveImageUrl(img)}
+                              alt=""
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center px-2 text-center text-[10px] text-slate-400">
+                              No image
+                            </div>
+                          )}
+                          {busy ? (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-xs font-semibold text-slate-700">
+                              Uploading…
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label
+                            htmlFor={uploadId}
+                            className="cursor-pointer rounded-sm border border-slate-200 bg-slate-50 py-2 text-center text-xs font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-white"
+                          >
+                            {img ? 'Replace image' : 'Upload image'}
+                          </label>
+                          <input
+                            id={uploadId}
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            disabled={busy}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) uploadCatalogCategoryImage(c, f);
+                              e.target.value = '';
+                            }}
+                          />
+                          {img ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => clearCatalogCategoryImage(c)}
+                              className="rounded-sm border border-red-100 bg-red-50/80 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+                            >
+                              Remove image
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-3 rounded-sm border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="min-w-[200px] flex-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Add brand</label>
+                  <input
+                    value={newBrandNameInput}
+                    onChange={(e) => setNewBrandNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCatalogBrand())}
+                    placeholder="e.g. Farm Fresh Co."
+                    className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-4 py-2.5 text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={addCatalogBrand}
+                  className="rounded-sm bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Add brand
+                </button>
+                <p className="w-full text-xs text-slate-500">
+                  Brands appear on the homepage, shop filter, and product assignment. Upload a logo for each brand (optional but recommended).
+                </p>
+                <p className="w-full text-[11px] text-slate-400">{IMAGE_HINT_BRAND_LOGO}</p>
+                <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {brandsList.map((b) => {
+                    const img = String(b.logo_url || '').trim();
+                    const uploadBid = `brand-logo-upload-${b.id}`;
+                    const busy = brandLogoUploading === b.id;
+                    return (
+                      <div
+                        key={b.id}
+                        className="flex flex-col gap-2 rounded-sm border border-slate-200 bg-slate-50/80 p-3 shadow-sm"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{b.name}</p>
                           <button
                             type="button"
-                            onClick={() => deleteCatalogCategory(c)}
-                            className="shrink-0 rounded-sm px-1.5 py-0.5 text-xs font-semibold text-slate-400 transition hover:bg-red-50 hover:text-red-600"
-                            title={`Delete ${c}`}
-                            aria-label={`Delete category ${c}`}
+                            onClick={() => deleteCatalogBrand(b.id)}
+                            className="shrink-0 rounded-sm px-2 py-0.5 text-xs font-semibold text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                            title={`Delete ${b.name}`}
                           >
                             ×
                           </button>
+                        </div>
+                        <div className="relative flex h-20 w-full items-center justify-center rounded-sm border border-slate-200 bg-white px-2">
+                          {img ? (
+                            <img src={resolveImageUrl(img)} alt="" className="max-h-16 max-w-full object-contain" />
+                          ) : (
+                            <span className="text-[10px] text-slate-400">No logo</span>
+                          )}
+                          {busy ? (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 text-xs font-semibold text-slate-700">
+                              Uploading…
+                            </div>
+                          ) : null}
+                        </div>
+                        <label
+                          htmlFor={uploadBid}
+                          className="cursor-pointer rounded-sm border border-slate-200 bg-white py-2 text-center text-xs font-semibold text-slate-800 transition hover:border-slate-300"
+                        >
+                          {img ? 'Replace logo' : 'Upload logo'}
+                        </label>
+                        <input
+                          id={uploadBid}
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          disabled={busy}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadBrandLogo(b.id, f);
+                            e.target.value = '';
+                          }}
+                        />
+                        {img ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => clearBrandLogo(b.id)}
+                            className="rounded-sm border border-red-100 bg-red-50/80 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                          >
+                            Remove logo
+                          </button>
                         ) : null}
-                      </span>
+                      </div>
                     );
                   })}
                 </div>
@@ -1569,6 +1988,18 @@ function Admin() {
                     {(categoriesList.length ? categoriesList : ['General']).map((c) => (
                       <option key={c} value={c}>
                         {c}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={newProduct.brand_id || ''}
+                    onChange={(e) => setNewProduct({ ...newProduct, brand_id: e.target.value })}
+                    className="rounded-sm border border-slate-200 bg-white px-4 py-3"
+                  >
+                    <option value="">No brand</option>
+                    {brandsList.map((b) => (
+                      <option key={b.id} value={String(b.id)}>
+                        {b.name}
                       </option>
                     ))}
                   </select>
@@ -1793,6 +2224,7 @@ function Admin() {
                                   const pd = p.preorder_available_date ? formatPreorderInput(p.preorder_available_date) : '';
                                   p.preorder_available_date = pd;
                                   p.availability = stockToAvailability(p.stock, pd);
+                                  p.brand_id = product.brand?.id != null ? String(product.brand.id) : '';
                                   setEditingPricingOptionRows(
                                     Array.isArray(product.pricing_options) && product.pricing_options.length
                                       ? product.pricing_options.map((o) => ({
@@ -1845,6 +2277,20 @@ function Admin() {
                                     {(categoriesList.length ? categoriesList : ['General']).map((c) => (
                                       <option key={c} value={c}>
                                         {c}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    value={editingProduct.brand_id || ''}
+                                    onChange={(event) =>
+                                      setEditingProduct({ ...editingProduct, brand_id: event.target.value })
+                                    }
+                                    className="rounded-sm border border-slate-200 bg-white px-4 py-3 text-sm"
+                                  >
+                                    <option value="">No brand</option>
+                                    {brandsList.map((br) => (
+                                      <option key={br.id} value={String(br.id)}>
+                                        {br.name}
                                       </option>
                                     ))}
                                   </select>
@@ -2188,25 +2634,44 @@ function Admin() {
                   <option value="Processing">Processing</option>
                   <option value="Shipped">Shipped</option>
                   <option value="Delivered">Delivered</option>
+                  <option value="Cancelled">Cancelled</option>
                 </select>
               </div>
               <div className="grid gap-4">
-                {visibleOrders.map((order) => (
+                {visibleOrders.map((order) => {
+                  const orderTotal = Number(order.total_price || 0);
+                  const paid = Number(order.amount_paid != null ? order.amount_paid : 0);
+                  const due = Math.max(0, orderTotal - (Number.isFinite(paid) ? paid : 0));
+                  const ret = String(order.return_status || 'none').toLowerCase();
+                  return (
                   <div key={order.id} className="rounded-sm border border-slate-200 bg-slate-50 p-4 transition hover:shadow-sm">
-                    <div className="flex items-center justify-between mb-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
                       <div>
                         <p className="font-semibold text-slate-900">Order #{order.id}</p>
                         <p className="text-sm text-slate-600">{order.customer_name} - {order.customer_phone}</p>
                       </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {ret !== 'none' ? (
+                          <span className="rounded-sm bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">
+                            Return: {ret}
+                          </span>
+                        ) : null}
                       <span className={`rounded-sm px-3 py-1 text-xs font-semibold capitalize ${
                         order.status === 'Delivered' ? 'bg-sage-100 text-sage-700' :
                         order.status === 'Pending' ? 'bg-peach-100 text-peach-800' :
+                        order.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
                         'bg-blue-100 text-blue-700'
                       }`}>
                         {order.status}
                       </span>
+                      </div>
                     </div>
-                    <p className="text-sm text-slate-600 mb-3">Total: ৳{order.total_price} | Method: {order.payment_type}</p>
+                    <p className="text-sm text-slate-600 mb-1">
+                      Total: ৳{Number(order.total_price).toFixed(2)} | Method: {order.payment_type}
+                    </p>
+                    <p className="mb-3 text-xs font-medium text-slate-700">
+                      Paid: ৳{paid.toFixed(2)} · Due: ৳{due.toFixed(2)}
+                    </p>
                     <p className="mb-2 text-xs font-medium text-slate-700">
                       Delivery:{' '}
                       {order.delivery_method === 'point'
@@ -2292,6 +2757,18 @@ function Admin() {
                       ) : null}
                     </div>
                     <p className="text-xs text-slate-500 mb-3">Placed: {formatDate(order.created_at)}</p>
+                    {order.status === 'Cancelled' && order.cancellation_reason ? (
+                      <p className="mb-3 rounded-sm border border-red-100 bg-red-50/80 px-3 py-2 text-xs text-red-900">
+                        <span className="font-semibold">Cancellation: </span>
+                        {order.cancellation_reason}
+                      </p>
+                    ) : null}
+                    {ret !== 'none' && order.return_notes ? (
+                      <p className="mb-3 rounded-sm border border-amber-100 bg-amber-50/80 px-3 py-2 text-xs text-amber-950">
+                        <span className="font-semibold">Return notes: </span>
+                        {order.return_notes}
+                      </p>
+                    ) : null}
                     {order.tracking_number ? (
                       <p className="mb-2 text-xs text-slate-700">
                         Tracking / consignment:{' '}
@@ -2313,14 +2790,16 @@ function Admin() {
                       </p>
                     ) : null}
                     <div className="mb-3 flex flex-wrap gap-2">
-                      {['Pending', 'Processing', 'Shipped', 'Delivered'].map((status) => (
+                      {['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'].map((status) => (
                         <button
                           key={status}
                           onClick={() => quickStatusUpdate(order, status)}
                           className={`rounded-sm px-3 py-1 text-xs font-semibold transition ${
                             order.status === status
                               ? 'bg-slate-900 text-white'
-                              : 'border border-slate-300 text-slate-700 hover:bg-white'
+                              : status === 'Cancelled'
+                                ? 'border border-red-200 text-red-800 hover:bg-red-50'
+                                : 'border border-slate-300 text-slate-700 hover:bg-white'
                           }`}
                         >
                           {status}
@@ -2354,7 +2833,55 @@ function Admin() {
                       )}
                       
                       {selectedOrder === order.id ? (
-                        <div className="flex-1 space-y-3 bg-white p-4 rounded-sm">
+                        <div className="flex-1 min-w-[min(100%,18rem)] space-y-3 rounded-sm border border-slate-200 bg-white p-4 shadow-sm">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Paid / due</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <label className="block text-xs text-slate-600">
+                              Amount paid (৳)
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={orderUpdate.amount_paid}
+                                onChange={(e) => setOrderUpdate({ ...orderUpdate, amount_paid: e.target.value })}
+                                className="mt-1 w-full rounded-sm border border-slate-200 px-3 py-2 text-sm"
+                              />
+                            </label>
+                            <div className="flex flex-col justify-end rounded-sm border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                              <span className="text-[11px] font-semibold uppercase text-slate-500">Due</span>
+                              <span className="font-semibold text-slate-900">
+                                ৳
+                                {Math.max(
+                                  0,
+                                  Number(order.total_price || 0) -
+                                    (Number.isFinite(Number(orderUpdate.amount_paid))
+                                      ? Number(orderUpdate.amount_paid)
+                                      : 0)
+                                ).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Return</p>
+                          <select
+                            value={orderUpdate.return_status}
+                            onChange={(e) => setOrderUpdate({ ...orderUpdate, return_status: e.target.value })}
+                            className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm"
+                          >
+                            <option value="none">None</option>
+                            <option value="requested">Requested</option>
+                            <option value="approved">Approved</option>
+                            <option value="received">Received back</option>
+                            <option value="closed">Closed</option>
+                          </select>
+                          <textarea
+                            value={orderUpdate.return_notes}
+                            onChange={(e) => setOrderUpdate({ ...orderUpdate, return_notes: e.target.value })}
+                            placeholder="Return notes (reason, SKU, condition…)"
+                            rows={2}
+                            className="w-full resize-y rounded-sm border border-slate-200 px-3 py-2 text-sm"
+                          />
+
                           <select
                             value={orderUpdate.status}
                             onChange={(e) => setOrderUpdate({ ...orderUpdate, status: e.target.value })}
@@ -2365,8 +2892,19 @@ function Admin() {
                             <option value="Processing">Processing</option>
                             <option value="Shipped">Shipped</option>
                             <option value="Delivered">Delivered</option>
+                            <option value="Cancelled">Cancelled</option>
                           </select>
-                          
+                          {orderUpdate.status === 'Cancelled' ? (
+                            <textarea
+                              value={orderUpdate.cancellation_reason}
+                              onChange={(e) => setOrderUpdate({ ...orderUpdate, cancellation_reason: e.target.value })}
+                              placeholder="Cancellation reason (visible on this order)"
+                              rows={2}
+                              className="w-full resize-y rounded-sm border border-red-100 bg-red-50/40 px-3 py-2 text-sm text-red-950"
+                            />
+                          ) : null}
+
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Courier &amp; tracking</p>
                           <select
                             value={orderUpdate.courier_name}
                             onChange={(e) => setOrderUpdate({ ...orderUpdate, courier_name: e.target.value })}
@@ -2377,14 +2915,14 @@ function Admin() {
                               <option key={c.id} value={c.name}>{c.name}</option>
                             ))}
                           </select>
-                          
+
                           <input
                             value={orderUpdate.tracking_number}
                             onChange={(e) => setOrderUpdate({ ...orderUpdate, tracking_number: e.target.value })}
                             placeholder="Tracking Number"
                             className="w-full rounded-sm border border-slate-200 px-3 py-2 text-sm"
                           />
-                          
+
                           <div className="flex gap-2">
                             <button
                               disabled={savingId === order.id}
@@ -2394,18 +2932,40 @@ function Admin() {
                               {savingId === order.id ? 'Updating...' : 'Update'}
                             </button>
                             <button
-                              onClick={() => setSelectedOrder(null)}
+                              type="button"
+                              onClick={() => {
+                                setSelectedOrder(null);
+                                setOrderUpdate({
+                                  status: '',
+                                  courier_name: '',
+                                  tracking_number: '',
+                                  amount_paid: '',
+                                  return_status: 'none',
+                                  return_notes: '',
+                                  cancellation_reason: '',
+                                });
+                              }}
                               className="flex-1 rounded-sm border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100"
                             >
-                              Cancel
+                              Close
                             </button>
                           </div>
                         </div>
                       ) : (
                         <button
+                          type="button"
                           onClick={() => {
                             setSelectedOrder(order.id);
-                            setOrderUpdate({ status: order.status, courier_name: order.courier_name || '', tracking_number: order.tracking_number || '' });
+                            const ap = order.amount_paid != null && Number.isFinite(Number(order.amount_paid)) ? Number(order.amount_paid) : 0;
+                            setOrderUpdate({
+                              status: order.status,
+                              courier_name: order.courier_name || '',
+                              tracking_number: order.tracking_number || '',
+                              amount_paid: String(ap),
+                              return_status: String(order.return_status || 'none').toLowerCase(),
+                              return_notes: order.return_notes || '',
+                              cancellation_reason: order.cancellation_reason || '',
+                            });
                           }}
                           className="rounded-sm bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
                         >
@@ -2414,7 +2974,8 @@ function Admin() {
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -2678,32 +3239,155 @@ function Admin() {
 
               <div className="rounded-sm border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-sm font-semibold text-slate-900">Unboxing hero (large image beside headline)</p>
-                <p className="mt-1 text-xs text-slate-500">Portrait ~4:5 works well. Replaces the default stock photo on the home page.</p>
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={savingId === 'adv_advertise_unboxing_hero_image'}
-                  onChange={(e) => uploadAdvertiseImage('advertise_unboxing_hero_image', e.target.files?.[0])}
-                  className="mt-3 w-full max-w-md text-sm text-slate-600"
-                />
-                {String(settings.advertise_unboxing_hero_image || '').trim() ? (
-                  <div className="mt-4 flex flex-wrap items-end gap-4">
-                    <img
-                      src={resolveImageUrl(settings.advertise_unboxing_hero_image)}
-                      alt=""
-                      className="h-40 max-w-xs rounded-sm border border-slate-200 object-cover"
+                <p className="mt-1 text-xs text-slate-500">Only one media is used here: either one image or one video URL.</p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Section title</label>
+                    <input
+                      type="text"
+                      value={settings.advertise_unboxing_title || ''}
+                      onChange={(e) => setSettings({ ...settings, advertise_unboxing_title: e.target.value })}
+                      className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="Designed to feel as good as unboxing."
                     />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Section subtitle</label>
+                    <textarea
+                      rows={3}
+                      value={settings.advertise_unboxing_subtitle || ''}
+                      onChange={(e) => setSettings({ ...settings, advertise_unboxing_subtitle: e.target.value })}
+                      className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                      placeholder="A quieter kind of commerce..."
+                    />
+                  </div>
+                  <div className="md:col-span-2">
                     <button
                       type="button"
-                      disabled={savingId === 'adv_advertise_unboxing_hero_image'}
-                      onClick={() => clearAdvertiseImage('advertise_unboxing_hero_image')}
-                      className="rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      disabled={savingId === 'advertise-unboxing-copy'}
+                      onClick={async () => {
+                        try {
+                          setSavingId('advertise-unboxing-copy');
+                          await Promise.all([
+                            fetch(apiUrl('/api/settings/advertise_unboxing_title'), {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json', ...authHeaders },
+                              body: JSON.stringify({ value: settings.advertise_unboxing_title || '' }),
+                            }),
+                            fetch(apiUrl('/api/settings/advertise_unboxing_subtitle'), {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json', ...authHeaders },
+                              body: JSON.stringify({ value: settings.advertise_unboxing_subtitle || '' }),
+                            }),
+                          ]);
+                          toast.success('Section title/subtitle saved');
+                          fetchAdminData();
+                        } catch {
+                          toast.error('Could not save section text');
+                        } finally {
+                          setSavingId(null);
+                        }
+                      }}
+                      className="rounded-sm bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                     >
-                      Clear — use default
+                      {savingId === 'advertise-unboxing-copy' ? 'Saving…' : 'Save title & subtitle'}
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Media type</label>
+                    <select
+                      value={settings.advertise_unboxing_media_type || 'image'}
+                      onChange={(e) => setSettings({ ...settings, advertise_unboxing_media_type: e.target.value })}
+                      className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      <option value="image">Image</option>
+                      <option value="video">Video</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      disabled={savingId === 'advertise-unboxing-media-type'}
+                      onClick={async () => {
+                        try {
+                          setSavingId('advertise-unboxing-media-type');
+                          await fetch(apiUrl('/api/settings/advertise_unboxing_media_type'), {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', ...authHeaders },
+                            body: JSON.stringify({
+                              value:
+                                String(settings.advertise_unboxing_media_type || 'image').trim() === 'video'
+                                  ? 'video'
+                                  : 'image',
+                            }),
+                          });
+                          toast.success('Media type updated');
+                          fetchAdminData();
+                        } catch {
+                          toast.error('Could not save media type');
+                        } finally {
+                          setSavingId(null);
+                        }
+                      }}
+                      className="rounded-sm bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {savingId === 'advertise-unboxing-media-type' ? 'Saving…' : 'Save media type'}
+                    </button>
+                  </div>
+                </div>
+                {(settings.advertise_unboxing_media_type || 'image') === 'video' ? (
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Video URL (YouTube/Vimeo embed or direct MP4/WebM URL)
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.advertise_unboxing_video_url || ''}
+                        onChange={(e) => setSettings({ ...settings, advertise_unboxing_video_url: e.target.value })}
+                        className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                        placeholder="https://www.youtube.com/embed/..."
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={savingId === 'advertise_unboxing_video_url'}
+                      onClick={() => updateSetting('advertise_unboxing_video_url', settings.advertise_unboxing_video_url || '')}
+                      className="rounded-sm bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      {savingId === 'advertise_unboxing_video_url' ? 'Saving…' : 'Save video URL'}
                     </button>
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-slate-500">No custom image — default Unsplash is shown.</p>
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={savingId === 'adv_advertise_unboxing_hero_image'}
+                      onChange={(e) => uploadAdvertiseImage('advertise_unboxing_hero_image', e.target.files?.[0])}
+                      className="mt-3 w-full max-w-md text-sm text-slate-600"
+                    />
+                    {String(settings.advertise_unboxing_hero_image || '').trim() ? (
+                      <div className="mt-4 flex flex-wrap items-end gap-4">
+                        <img
+                          src={resolveImageUrl(settings.advertise_unboxing_hero_image)}
+                          alt=""
+                          className="h-40 max-w-xs rounded-sm border border-slate-200 object-cover"
+                        />
+                        <button
+                          type="button"
+                          disabled={savingId === 'adv_advertise_unboxing_hero_image'}
+                          onClick={() => clearAdvertiseImage('advertise_unboxing_hero_image')}
+                          className="rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Clear — use default
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs text-slate-500">No custom image — default Unsplash is shown.</p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -2865,6 +3549,148 @@ function Admin() {
                               type="button"
                               onClick={() => deleteAdminReview(r.id)}
                               disabled={savingId === `review-del-${r.id}`}
+                              className="rounded-sm bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'gallery' && (
+            <div className="space-y-8">
+              <div>
+                <h2 className="text-2xl font-semibold text-slate-900">Site gallery</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Images and videos shown on the public <span className="font-semibold text-slate-800">/gallery</span> page. Upload
+                  files here, or paste a YouTube / Vimeo link for embedded video.
+                </p>
+              </div>
+
+              <div className="rounded-sm border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-sm font-semibold text-slate-900">Add item</p>
+                <form onSubmit={addGalleryAdminItem} className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Type</label>
+                    <select
+                      value={galleryKind}
+                      onChange={(e) => {
+                        setGalleryKind(e.target.value);
+                        setGalleryFile(null);
+                        setGalleryFileInputKey((k) => k + 1);
+                      }}
+                      className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                    >
+                      <option value="image">Photo</option>
+                      <option value="video">Video</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Caption (optional)</label>
+                    <input
+                      value={galleryCaption}
+                      onChange={(e) => setGalleryCaption(e.target.value)}
+                      className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                      maxLength={255}
+                      placeholder="Short description"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {galleryKind === 'image' ? 'Image file' : 'Video file (optional if using URL below)'}
+                    </label>
+                    <input
+                      key={galleryFileInputKey}
+                      type="file"
+                      accept={galleryKind === 'image' ? 'image/*' : 'video/*'}
+                      onChange={(e) => setGalleryFile(e.target.files?.[0] || null)}
+                      className="mt-1 w-full text-sm text-slate-600"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      {galleryKind === 'image'
+                        ? 'JPG, PNG, WebP — shown on the gallery grid.'
+                        : 'MP4 or WebM upload — or use the embed URL field instead.'}
+                    </p>
+                  </div>
+                  {galleryKind === 'video' ? (
+                    <div className="md:col-span-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Video URL (YouTube, Vimeo, or direct .mp4 link)
+                      </label>
+                      <input
+                        value={galleryEmbedUrl}
+                        onChange={(e) => setGalleryEmbedUrl(e.target.value)}
+                        className="mt-1 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                        placeholder="https://www.youtube.com/watch?v=…"
+                      />
+                    </div>
+                  ) : null}
+                  <div className="md:col-span-2">
+                    <button
+                      type="submit"
+                      disabled={savingId === 'gallery-add'}
+                      className="rounded-sm bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {savingId === 'gallery-add' ? 'Saving…' : 'Add to gallery'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="overflow-x-auto rounded-sm border border-slate-200 bg-white shadow-sm">
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Preview</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Source</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Caption</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {galleryLoading ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                          Loading gallery…
+                        </td>
+                      </tr>
+                    ) : galleryItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                          No gallery items yet. Add a photo or video above.
+                        </td>
+                      </tr>
+                    ) : (
+                      galleryItems.map((g) => (
+                        <tr key={g.id}>
+                          <td className="px-4 py-3">
+                            {g.kind === 'image' ? (
+                              <img
+                                src={resolveImageUrl(g.src)}
+                                alt=""
+                                className="h-14 w-20 rounded-sm border border-slate-200 object-cover"
+                              />
+                            ) : String(g.src).includes('youtube.com/embed') || String(g.src).includes('player.vimeo.com') ? (
+                              <span className="text-xs text-slate-500">Embed</span>
+                            ) : (
+                              <span className="text-xs text-slate-500">Video file</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 capitalize">{g.kind}</td>
+                          <td className="max-w-[220px] break-all px-4 py-3 text-xs text-slate-600">{g.src}</td>
+                          <td className="max-w-[180px] px-4 py-3 text-xs text-slate-600">{g.caption || '—'}</td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => deleteGalleryAdminItem(g.id)}
+                              disabled={savingId === `gallery-del-${g.id}`}
                               className="rounded-sm bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500 disabled:opacity-50"
                             >
                               Delete
