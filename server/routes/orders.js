@@ -333,7 +333,8 @@ router.post('/', async (req, res) => {
         }
         couponId = c.id;
         if (c.discount_type === 'percent') {
-          discountAmount = (eligible * Number(c.discount_value)) / 100;
+          const percent = Math.min(Math.max(Number(c.discount_value) || 0, 0), 100);
+          discountAmount = (eligible * percent) / 100;
         } else {
           discountAmount = Number(c.discount_value);
         }
@@ -437,6 +438,24 @@ router.post('/', async (req, res) => {
       paySettings[s.setting_key] = s.setting_value;
     });
 
+    sendOrderEmail(customerEmail, {
+      id: orderId,
+      customer_name: customerName,
+      customer_phone: customerPhone,
+      customer_email: customerEmail || null,
+      customer_address: customerAddress,
+      delivery_area: deliveryArea,
+      delivery_method: resolvedMethod,
+      payment_type: paymentType,
+      bkash_number: bKashNumber || null,
+      coupon_code: appliedCouponCode || null,
+      items: sanitizedItems,
+      subtotal,
+      shipping_fee: shippingFee,
+      discount_amount: discountAmount,
+      total_price: totalPrice,
+    });
+
     const isApiPayment =
       paymentType === 'Online' ||
       (paymentType === 'Bkash' && paySettings.bkash_mode === 'api') ||
@@ -465,14 +484,6 @@ router.post('/', async (req, res) => {
       }
       throw new Error('Could not generate payment URL');
     }
-
-    sendOrderEmail(customerEmail, {
-      id: orderId,
-      customer_name: customerName,
-      total_price: totalPrice,
-      payment_type: paymentType,
-      customer_address: customerAddress,
-    });
 
     sendFacebookPurchaseEvent({
       orderId,

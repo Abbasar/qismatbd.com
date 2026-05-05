@@ -3,10 +3,22 @@ import { Link } from 'react-router-dom';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { getAuthHeader, getCurrentUser, saveCurrentUser } from '../utils/auth';
 
+function parseOrderItems(rawItems) {
+  if (Array.isArray(rawItems)) return rawItems;
+  if (typeof rawItems !== 'string') return [];
+  try {
+    const parsed = JSON.parse(rawItems);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function MyAccount() {
   const user = getCurrentUser();
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [trackingState, setTrackingState] = useState({});
   const [profile, setProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -44,6 +56,22 @@ function MyAccount() {
     return { totalOrders, totalSpent, delivered };
   }, [orders]);
 
+  const enrichedOrders = useMemo(
+    () =>
+      orders.map((order) => {
+        const totalPrice = Number(order.total_price || 0);
+        const amountPaid = Math.min(Math.max(Number(order.amount_paid || 0), 0), totalPrice);
+        const dueAmount = Math.max(totalPrice - amountPaid, 0);
+        return {
+          ...order,
+          parsedItems: parseOrderItems(order.items),
+          amountPaid,
+          dueAmount,
+        };
+      }),
+    [orders]
+  );
+
   const handleProfileSave = (event) => {
     event.preventDefault();
     if (!user) return;
@@ -54,6 +82,31 @@ function MyAccount() {
     );
     setMessage('Profile updated successfully.');
     window.setTimeout(() => setMessage(''), 1800);
+  };
+
+  const handleTrackOrder = async (orderId, trackingNumber) => {
+    if (!trackingNumber) return;
+
+    setTrackingState((prev) => ({
+      ...prev,
+      [orderId]: { loading: true, error: '', data: prev[orderId]?.data || null },
+    }));
+
+    try {
+      const response = await fetchWithTimeout(apiUrl(`/api/orders/track/${encodeURIComponent(trackingNumber)}`));
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || 'Unable to track order');
+
+      setTrackingState((prev) => ({
+        ...prev,
+        [orderId]: { loading: false, error: '', data },
+      }));
+    } catch (error) {
+      setTrackingState((prev) => ({
+        ...prev,
+        [orderId]: { loading: false, error: error.message || 'Unable to track order', data: null },
+      }));
+    }
   };
 
   useEffect(() => {
@@ -132,7 +185,7 @@ function MyAccount() {
           <h2 className="text-xl font-semibold text-stone-900">My Orders</h2>
           {loadingOrders ? (
             <p className="text-stone-600">Loading your orders...</p>
-          ) : orders.length === 0 ? (
+          ) : enrichedOrders.length === 0 ? (
             <div className="rounded-sm border border-dashed border-stone-300 p-6 text-center">
               <p className="text-stone-700">No orders yet.</p>
               <Link to="/shop" className="mt-3 inline-block text-sm font-semibold text-sage-600 hover:text-sage-700">
@@ -141,20 +194,78 @@ function MyAccount() {
             </div>
           ) : (
             <div className="space-y-3">
-              {orders.map((order) => (
+              {enrichedOrders.map((order) => (
                 <article key={order.id} className="rounded-sm border border-stone-200 bg-stone-50 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-semibold text-stone-900">Order #{order.id}</p>
                     <span className="rounded-sm bg-white px-3 py-1 text-xs font-semibold text-stone-700">{order.status}</span>
                   </div>
                   <p className="mt-2 text-sm text-stone-600">Placed on {new Date(order.created_at).toLocaleDateString()}</p>
+                  {order.parsedItems.length > 0 ? (
+                    <div className="mt-3 rounded-sm border border-stone-200 bg-white px-3 py-2.5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Ordered Items</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {order.parsedItems.map((item, index) => (
+                          <span
+                            key={`${order.id}-item-${index}`}
+                            className="rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-800"
+                          >
+                            {item.name || 'Unnamed item'}
+                            {item.quantity ? ` x${item.quantity}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm text-stone-600">Payment: {order.payment_type}</p>
                     <p className="font-semibold text-stone-900">৳{Number(order.total_price).toFixed(2)}</p>
                   </div>
-                  {order.tracking_number && (
-                    <p className="mt-2 text-xs text-stone-500">Tracking: {order.tracking_number}</p>
-                  )}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Paid</p>
+                      <p className="mt-1 text-sm font-semibold text-emerald-900">৳{order.amountPaid.toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">Due</p>
+                      <p className="mt-1 text-sm font-semibold text-amber-900">৳{order.dueAmount.toFixed(2)}</p>
+                    </div>
+                  </div>
+                  {order.tracking_number ? (
+                    <div className="mt-3 rounded-sm border border-stone-200 bg-white px-3 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-stone-500">
+                          Tracking: <span className="font-mono font-semibold text-stone-700">{order.tracking_number}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleTrackOrder(order.id, order.tracking_number)}
+                          className="rounded-sm border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-800 transition hover:bg-brand-100"
+                        >
+                          {trackingState[order.id]?.loading ? 'Tracking...' : 'Track Order'}
+                        </button>
+                      </div>
+                      {trackingState[order.id]?.error ? (
+                        <p className="mt-2 text-xs text-rose-600">{trackingState[order.id].error}</p>
+                      ) : null}
+                      {trackingState[order.id]?.data ? (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-sm border border-stone-200 bg-stone-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">Current Status</p>
+                            <p className="mt-1 text-sm font-semibold text-stone-900">
+                              {trackingState[order.id].data.status || order.status}
+                            </p>
+                          </div>
+                          <div className="rounded-sm border border-stone-200 bg-stone-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">Courier</p>
+                            <p className="mt-1 text-sm font-semibold text-stone-900">
+                              {trackingState[order.id].data.courier_name || order.courier_name || 'Not assigned'}
+                            </p>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>

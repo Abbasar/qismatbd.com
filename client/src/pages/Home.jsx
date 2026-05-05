@@ -273,7 +273,7 @@ function Home() {
   return (
     <div className="space-y-5 sm:space-y-6 lg:space-y-8">
       <Helmet>
-        <title>Qismat — Curated products, calm checkout</title>
+        <title>Qismat — Fresh Fruits, Best Food</title>
         <meta
           name="description"
           content="Shop curated products with secure checkout, fast delivery, and a minimalist shopping experience powered by Qismat."

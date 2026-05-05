@@ -1,3 +1,5 @@
+const { resolveUnitPrice } = require('./productPricing');
+
 /**
  * Computes cart subtotal from DB prices and eligible subtotal for scoped coupons.
  * @param {import('mysql2/promise').Pool|import('mysql2/promise').PoolConnection} conn
@@ -13,10 +15,13 @@ async function computeCartSubtotalsForCoupon(conn, cartItems, couponRow) {
     const pid = item.id ?? item.product_id;
     if (pid == null) continue;
     const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
-    const [prows] = await conn.query('SELECT id, price, category FROM products WHERE id = ?', [pid]);
+    const [prows] = await conn.query(
+      'SELECT id, price, category, pricing_options FROM products WHERE id = ?',
+      [pid]
+    );
     if (!prows.length) continue;
     const p = prows[0];
-    const line = Number(p.price) * qty;
+    const line = Number(resolveUnitPrice(p, item)) * qty;
     full += line;
     lines.push({
       productId: Number(p.id),

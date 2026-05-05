@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import 'swiper/css';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { getAuthHeader } from '../utils/auth';
 import { getCurrentUser } from '../utils/auth';
+import { addToCart, buyNow } from '../utils/cart';
+import { canPurchaseProduct, withDefaultUnitSelection } from '../utils/productAvailability';
+import { resolveImageUrl } from '../utils/image';
+import { toast } from 'sonner';
 
 function OrderSuccess() {
   const location = useLocation();
@@ -10,6 +16,8 @@ function OrderSuccess() {
   const [searchParams] = useSearchParams();
   const [order, setOrder] = useState(location.state?.order || null);
   const [orderLoadFailed, setOrderLoadFailed] = useState(false);
+  const [suggestedProducts, setSuggestedProducts] = useState([]);
+  const navigate = useNavigate();
   const user = getCurrentUser();
   const orderId = useMemo(() => location.state?.orderId || searchParams.get('orderId'), [location.state, searchParams]);
 
@@ -56,6 +64,52 @@ function OrderSuccess() {
       return [];
     }
   }, [order?.items]);
+
+  const pricing = useMemo(() => {
+    const itemsSubtotalFallback = parsedItems.reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+      0
+    );
+    const subtotalRaw = Number(order?.subtotal);
+    const shippingRaw = Number(order?.shipping_fee);
+    const discountRaw = Number(order?.discount_amount);
+    const subtotal = Number.isFinite(subtotalRaw) ? subtotalRaw : itemsSubtotalFallback;
+    const shippingFee = Number.isFinite(shippingRaw) ? shippingRaw : 0;
+    const discountAmount = Number.isFinite(discountRaw) ? discountRaw : 0;
+    const computedTotal = Math.max(0, subtotal + shippingFee - discountAmount);
+    const fallbackTotal = Number(order?.total_price ?? location.state?.totalPrice);
+    const total = Number.isFinite(fallbackTotal) && !Number.isFinite(subtotalRaw)
+      ? fallbackTotal
+      : computedTotal;
+    return { subtotal, shippingFee, discountAmount, total };
+  }, [order, location.state, parsedItems]);
+
+  useEffect(() => {
+    const loadSuggestedProducts = async () => {
+      try {
+        const response = await fetchWithTimeout(apiUrl('/api/products'));
+        if (!response.ok) return;
+        const data = await response.json().catch(() => []);
+        if (!Array.isArray(data)) return;
+        const orderedIds = new Set(parsedItems.map((item) => Number(item.id)).filter((id) => Number.isFinite(id)));
+        const sameCategory = data.filter(
+          (product) =>
+            !orderedIds.has(Number(product.id)) &&
+            parsedItems.some((item) => String(item.category || '').trim() === String(product.category || '').trim())
+        );
+        const byId = new Map();
+        for (const product of [...sameCategory, ...data]) {
+          const id = Number(product.id);
+          if (!Number.isFinite(id) || orderedIds.has(id) || byId.has(id)) continue;
+          byId.set(id, product);
+        }
+        setSuggestedProducts(Array.from(byId.values()).slice(0, 12));
+      } catch {
+        setSuggestedProducts([]);
+      }
+    };
+    loadSuggestedProducts();
+  }, [parsedItems]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-4 fade-in-up sm:space-y-5">
@@ -131,10 +185,89 @@ function OrderSuccess() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-stone-200 pt-4">
-              <span className="text-lg font-semibold text-stone-900">Total Paid</span>
-              <span className="text-xl font-semibold text-sage-600">৳{Number(order.total_price || 0).toFixed(2)}</span>
+            <div className="space-y-2 border-t border-stone-200 pt-4">
+              <div className="flex items-center justify-between text-sm text-stone-700">
+                <span>Items Subtotal</span>
+                <span>৳{pricing.subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-stone-700">
+                <span>Delivery Charge</span>
+                <span>৳{pricing.shippingFee.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm text-stone-700">
+                <span>Discount</span>
+                <span>-৳{pricing.discountAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between border-t border-stone-200 pt-2">
+                <span className="text-lg font-semibold text-stone-900">Total Amount</span>
+                <span className="text-xl font-semibold text-sage-600">৳{pricing.total.toFixed(2)}</span>
+              </div>
             </div>
+            {suggestedProducts.length > 0 ? (
+              <div className="border-t border-stone-200 pt-5">
+                <h3 className="text-lg font-semibold text-stone-900">Continue shopping</h3>
+                <p className="mt-1 text-sm text-stone-600">
+                  Explore a few more picks while your current order is being processed.
+                </p>
+                <Swiper
+                  slidesPerView={2}
+                  spaceBetween={10}
+                  breakpoints={{
+                    480: { slidesPerView: 2, spaceBetween: 12 },
+                    640: { slidesPerView: 2.2, spaceBetween: 14 },
+                    768: { slidesPerView: 2.5, spaceBetween: 14 },
+                  }}
+                  className="mt-4 !pb-1"
+                >
+                  {suggestedProducts.map((product) => {
+                    const quickLine = withDefaultUnitSelection(product);
+                    return (
+                      <SwiperSlide key={product.id} className="!h-auto">
+                        <div className="flex h-full flex-col overflow-hidden rounded-sm border border-stone-200 bg-white">
+                          <Link to={`/product/${product.id}`} className="block">
+                            <img
+                              src={resolveImageUrl(product.image)}
+                              alt={product.name}
+                              className="h-28 w-full object-cover sm:h-36"
+                            />
+                          </Link>
+                          <div className="flex flex-1 flex-col p-2.5 sm:p-3">
+                            <Link to={`/product/${product.id}`} className="line-clamp-2 text-xs font-semibold text-stone-900 hover:text-brand-700 sm:text-sm">
+                              {product.name}
+                            </Link>
+                            <p className="mt-1 text-xs text-stone-600 sm:text-sm">
+                              ৳{Number(quickLine.price || product.price || 0).toFixed(2)}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                buyNow({ ...quickLine, quantity: 1 });
+                                navigate('/checkout');
+                              }}
+                              disabled={!canPurchaseProduct(product)}
+                              className="mt-2 rounded-sm border border-brand-600 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-50 disabled:border-stone-300 disabled:text-stone-400 sm:px-3 sm:py-2 sm:text-xs"
+                            >
+                              Buy now
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                addToCart({ ...quickLine, quantity: 1 });
+                                toast.success('Added to cart');
+                              }}
+                              disabled={!canPurchaseProduct(product)}
+                              className="mt-2 rounded-sm bg-brand-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-brand-700 disabled:bg-stone-300 sm:mt-3 sm:px-3 sm:py-2 sm:text-xs"
+                            >
+                              Add to cart
+                            </button>
+                          </div>
+                        </div>
+                      </SwiperSlide>
+                    );
+                  })}
+                </Swiper>
+              </div>
+            ) : null}
           </div>
         )}
       </section>

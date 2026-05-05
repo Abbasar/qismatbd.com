@@ -252,8 +252,21 @@ CREATE TABLE IF NOT EXISTS `coupons` (
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `restrict_product_ids` JSON NULL,
   `restrict_categories` JSON NULL,
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_coupons_discount_non_negative` CHECK (`discount_value` >= 0),
+  CONSTRAINT `chk_coupons_percent_range` CHECK (
+    (`discount_type` <> 'percent') OR (`discount_value` <= 100)
+  )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Keep existing DB coupon values safe for percent/fixed logic.
+UPDATE `coupons`
+SET `discount_value` = 0
+WHERE `discount_value` < 0;
+
+UPDATE `coupons`
+SET `discount_value` = 100
+WHERE `discount_type` = 'percent' AND `discount_value` > 100;
 
 CREATE TABLE IF NOT EXISTS `newsletter_subscribers` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,

@@ -11,6 +11,7 @@ function Login() {
   const logoSrc = (contact || DEFAULT_STORE_CONTACT).logoUrl;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -112,13 +113,23 @@ function Login() {
         </div>
         <div>
           <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1.5 w-full rounded-sm border border-stone-200 bg-stone-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-stone-400 focus:bg-white"
-            required
-          />
+          <div className="relative mt-1.5">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-sm border border-stone-200 bg-stone-50 px-3.5 py-2.5 pr-11 text-sm outline-none transition focus:border-stone-400 focus:bg-white"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-stone-500 hover:text-stone-700"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <span className="text-[11px] font-semibold">{showPassword ? 'Hide' : 'Show'}</span>
+            </button>
+          </div>
         </div>
         <label className="flex items-center gap-2 text-xs text-stone-600">
           <input

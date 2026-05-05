@@ -210,6 +210,23 @@ INSERT INTO `coupons` (`code`, `discount_type`, `discount_value`, `min_subtotal`
 SELECT 'WELCOME10', 'percent', 10.00, 500.00, 1
 WHERE NOT EXISTS (SELECT 1 FROM `coupons` WHERE `code` = 'WELCOME10');
 
+-- Keep coupon seed and existing values consistent with server-side rules.
+UPDATE `coupons`
+SET
+  `discount_type` = 'percent',
+  `discount_value` = 10.00,
+  `min_subtotal` = 500.00,
+  `is_active` = 1
+WHERE `code` = 'WELCOME10';
+
+UPDATE `coupons`
+SET `discount_value` = 0
+WHERE `discount_value` < 0;
+
+UPDATE `coupons`
+SET `discount_value` = 100
+WHERE `discount_type` = 'percent' AND `discount_value` > 100;
+
 -- Fruit categories and sample fruit products
 UPDATE `settings`
 SET `setting_value` = '["Mango","Litchi","Jackfruit","Pineapple","Papaya","Banana","Guava","Dragon Fruit","Orange","Watermelon"]'

@@ -109,7 +109,8 @@ router.post('/validate', async (req, res) => {
 
     let discount = 0;
     if (c.discount_type === 'percent') {
-      discount = (eligible * Number(c.discount_value)) / 100;
+      const percent = Math.min(Math.max(Number(c.discount_value) || 0, 0), 100);
+      discount = (eligible * percent) / 100;
     } else {
       discount = Number(c.discount_value);
     }

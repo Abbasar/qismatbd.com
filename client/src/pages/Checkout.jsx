@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { getAuthHeader, getCurrentUser } from '../utils/auth';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
-import { getCart, updateQuantity, cartLineKey, removeFromCart, CART_UPDATED_EVENT } from '../utils/cart';
+import { addToCart, getCart, updateQuantity, updateCartItem, cartLineKey, removeFromCart, CART_UPDATED_EVENT } from '../utils/cart';
 import { CheckoutSkeleton } from '../components/Skeletons';
-import { maxOrderQuantity } from '../utils/productAvailability';
+import { canPurchaseProduct, maxOrderQuantity, withDefaultUnitSelection } from '../utils/productAvailability';
+import { resolveImageUrl } from '../utils/image';
 
 const steps = ['Details, delivery & payment', 'Review'];
 
@@ -56,6 +57,7 @@ function Checkout() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponBusy, setCouponBusy] = useState(false);
   const [errors, setErrors] = useState({});
+  const [catalogProducts, setCatalogProducts] = useState([]);
   const navigate = useNavigate();
   const user = getCurrentUser();
 
@@ -183,13 +185,22 @@ function Checkout() {
   useEffect(() => {
     const load = async () => {
       try {
-        const settingsRes = await fetchWithTimeout(apiUrl('/api/settings'));
+        const [settingsRes, productsRes] = await Promise.all([
+          fetchWithTimeout(apiUrl('/api/settings')),
+          fetchWithTimeout(apiUrl('/api/products')),
+        ]);
         const data = await settingsRes.json();
         const settingsObj = {};
         data.forEach((s) => {
           settingsObj[s.setting_key] = s.setting_value;
         });
         setSettings(settingsObj);
+        if (productsRes.ok) {
+          const products = await productsRes.json().catch(() => []);
+          setCatalogProducts(Array.isArray(products) ? products : []);
+        } else {
+          setCatalogProducts([]);
+        }
       } catch (error) {
         console.error(error);
       } finally {
@@ -207,6 +218,28 @@ function Checkout() {
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const discountPreview = appliedCoupon ? Number(appliedCoupon.discount_amount || 0) : 0;
   const totalPreview = Math.max(0, subtotal + shippingFee - discountPreview);
+  const cartProductIds = useMemo(
+    () => new Set(items.map((item) => Number(item.id)).filter((id) => Number.isFinite(id))),
+    [items]
+  );
+  /** Cart এ নেই এমন সব product — আগে same-category, তারপর বাকি (duplicate ছাড়া)। */
+  const browseMoreProducts = useMemo(() => {
+    const notInCart = catalogProducts.filter((p) => !cartProductIds.has(Number(p.id)));
+    const sameCategory = notInCart.filter((p) =>
+      items.some((line) => (line.category || '') === (p.category || ''))
+    );
+    const byId = new Map();
+    const pushInOrder = (arr) => {
+      for (const p of arr) {
+        const id = Number(p.id);
+        if (!Number.isFinite(id) || byId.has(id)) continue;
+        byId.set(id, p);
+      }
+    };
+    pushInOrder(sameCategory);
+    pushInOrder(notInCart);
+    return Array.from(byId.values());
+  }, [catalogProducts, cartProductIds, items]);
 
   const fieldsOk = useMemo(() => {
     const e = {};
@@ -269,7 +302,13 @@ function Checkout() {
         body: JSON.stringify({
           code: couponInput.trim(),
           subtotal,
-          items: items.map((i) => ({ id: i.id, quantity: i.quantity })),
+          items: items.map((i) => ({
+            id: i.id,
+            quantity: i.quantity,
+            selectedSize: i.selectedSize,
+            selectedOption: i.selectedOption,
+            selectedColor: i.selectedColor,
+          })),
         }),
       });
       const data = await res.json();
@@ -286,6 +325,44 @@ function Checkout() {
     }
   };
 
+  useEffect(() => {
+    if (!appliedCoupon?.code) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(apiUrl('/api/coupons/validate'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: appliedCoupon.code,
+            subtotal,
+            items: items.map((i) => ({
+              id: i.id,
+              quantity: i.quantity,
+              selectedSize: i.selectedSize,
+              selectedOption: i.selectedOption,
+              selectedColor: i.selectedColor,
+            })),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (data.valid) {
+          setAppliedCoupon(data);
+        } else {
+          setAppliedCoupon(null);
+        }
+      } catch {
+        if (!cancelled) setAppliedCoupon(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, subtotal, appliedCoupon?.code]);
+
   const adjustLineQuantity = (item, delta) => {
     const key = cartLineKey(item);
     const next = item.quantity + delta;
@@ -299,6 +376,17 @@ function Checkout() {
       return;
     }
     updateQuantity(key, next);
+  };
+
+  const updateLineUnit = (item, unitLabel) => {
+    const options = Array.isArray(item.pricing_options) ? item.pricing_options : [];
+    const picked = options.find((opt) => String(opt?.label || '').trim() === String(unitLabel).trim());
+    if (!picked) return;
+    const pickedPrice = Number(picked.price);
+    updateCartItem(cartLineKey(item), {
+      selectedSize: unitLabel,
+      price: Number.isFinite(pickedPrice) ? pickedPrice : Number(item.price),
+    });
   };
 
   const handleSubmit = async (event) => {
@@ -663,6 +751,35 @@ function Checkout() {
                               {[item.selectedSize, item.selectedColor].filter(Boolean).join(' · ')}
                             </p>
                           )}
+                          {Array.isArray(item.pricing_options) && item.pricing_options.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {item.pricing_options.map((opt) => {
+                                const unit = String(opt?.label || '').trim();
+                                if (!unit) return null;
+                                const unitPrice = Number(opt?.price);
+                                const active = String(item.selectedSize || '').trim() === unit;
+                                return (
+                                  <button
+                                    key={`${cartLineKey(item)}-${unit}`}
+                                    type="button"
+                                    onClick={() => updateLineUnit(item, unit)}
+                                    className={`rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                                      active
+                                        ? 'border-brand-600 bg-brand-600 text-white'
+                                        : 'border-stone-200 text-stone-700 hover:border-stone-300'
+                                    }`}
+                                  >
+                                    {unit}
+                                    {Number.isFinite(unitPrice) ? (
+                                      <span className={`ml-1 ${active ? 'text-white/90' : 'text-stone-500'}`}>
+                                        ৳{unitPrice.toFixed(0)}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
                           <p className="mt-1 text-xs text-stone-500">৳{Number(item.price).toFixed(2)} each</p>
                         </div>
                         <div className="flex shrink-0 items-center gap-3">
@@ -715,6 +832,49 @@ function Checkout() {
                   </div>
                 </div>
                 <p className="text-xs text-stone-500">Final totals are verified on the server when you pay.</p>
+                {browseMoreProducts.length > 0 ? (
+                  <div className="space-y-2 border-t border-stone-100 pt-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-stone-900">Add more items</p>
+                      <span className="text-[11px] text-stone-500">Scroll for all products</span>
+                    </div>
+                    <div
+                      className="max-h-[252px] min-h-0 space-y-2 overflow-y-auto overscroll-y-contain pr-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]"
+                      role="region"
+                      aria-label="Browse more products to add"
+                    >
+                      {browseMoreProducts.map((product) => {
+                        const quickLine = withDefaultUnitSelection(product);
+                        return (
+                          <div key={product.id} className="rounded-sm border border-stone-200/90 bg-stone-50/60 p-2">
+                            <div className="flex items-center gap-2">
+                              <Link to={`/product/${product.id}`} className="block h-12 w-12 shrink-0 overflow-hidden rounded-sm border border-stone-200">
+                                <img src={resolveImageUrl(product.image)} alt={product.name} className="h-full w-full object-cover" />
+                              </Link>
+                              <div className="min-w-0 flex-1">
+                                <Link to={`/product/${product.id}`} className="line-clamp-1 text-xs font-semibold text-stone-900 hover:text-brand-700">
+                                  {product.name}
+                                </Link>
+                                <p className="text-[11px] text-stone-600">৳{Number(quickLine.price || product.price || 0).toFixed(2)}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  addToCart({ ...quickLine, quantity: 1 });
+                                  toast.success('Added to cart');
+                                }}
+                                disabled={!canPurchaseProduct(product)}
+                                className="rounded-sm bg-brand-600 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-brand-700 disabled:bg-stone-300"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </>
             )}
           </aside>

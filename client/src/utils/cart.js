@@ -65,6 +65,43 @@ export const updateQuantity = (lineKey, quantity) => {
   return cart;
 };
 
+export const updateCartItem = (lineKey, updates) => {
+  const cart = getCart();
+  const idx = cart.findIndex((item) => cartLineKey(item) === lineKey);
+  if (idx === -1) return cart;
+
+  const current = cart[idx];
+  const next = { ...current, ...(updates || {}) };
+  if (!next.selectedSize) delete next.selectedSize;
+  if (!next.selectedColor) delete next.selectedColor;
+
+  const qty = Number(next.quantity);
+  if (Number.isFinite(qty) && qty <= 0) {
+    const updated = cart.filter((item) => cartLineKey(item) !== lineKey);
+    saveCart(updated);
+    return updated;
+  }
+
+  const nextKey = cartLineKey(next);
+  if (nextKey !== lineKey) {
+    const existingIdx = cart.findIndex((item, i) => i !== idx && cartLineKey(item) === nextKey);
+    if (existingIdx >= 0) {
+      const merged = [...cart];
+      merged[existingIdx] = {
+        ...merged[existingIdx],
+        quantity: Number(merged[existingIdx].quantity || 0) + Number(next.quantity || 1),
+      };
+      merged.splice(idx, 1);
+      saveCart(merged);
+      return merged;
+    }
+  }
+
+  cart[idx] = next;
+  saveCart(cart);
+  return cart;
+};
+
 export const clearCart = () => {
   localStorage.removeItem(CART_KEY);
   window.dispatchEvent(new CustomEvent(CART_EVENT, { detail: { items: [] } }));
