@@ -117,7 +117,7 @@ const PrevPromo = ({ children = null }) => {
                 aria-label="ক্যাটাগরি"
                 style={{ transform: 'translateY(52%)' }}
               >
-                <div className="pointer-events-none w-full max-w-5xl">{children}</div>
+                <div className="pointer-events-auto w-full max-w-5xl">{children}</div>
               </div>
             ) : null}
           </div>

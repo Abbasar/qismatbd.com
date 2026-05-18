@@ -10,6 +10,10 @@ import { canPurchaseProduct, withDefaultUnitSelection } from '../utils/productAv
 import { resolveImageUrl } from '../utils/image';
 import { toast } from 'sonner';
 
+/**
+ * অর্ডার সফল পেজ — রসিদ + Meta Pixel Purchase (fbq)
+ * eventID = purchase-order-{id} — সার্ভার CAPI-এর সাথে মিলিয়ে ডুপ্লিকেট কমায়
+ */
 function OrderSuccess() {
   const location = useLocation();
   const purchasePixelFired = useRef(false);

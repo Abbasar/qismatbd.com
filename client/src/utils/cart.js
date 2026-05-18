@@ -1,3 +1,7 @@
+/**
+ * কার্ট — ব্রাউজার localStorage (সার্ভার সেশন নয়)
+ * buyNow() এক পণ্য দিয়ে সরাসরি চেকআউট; addToCart() একাধিক আইটেম
+ */
 const CART_KEY = 'qismat-cart';
 const CART_EVENT = 'qismat-cart-updated';
 

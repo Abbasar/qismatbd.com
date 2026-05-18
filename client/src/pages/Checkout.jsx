@@ -1,3 +1,8 @@
+/**
+ * পূর্ণ চেকআউট — কার্ট থেকে অর্ডার
+ * POST /api/orders + facebook_fbp/fbc কুকি (Meta CAPI অ্যাট্রিবিউশন)
+ * Online পেমেন্ট হলে gateway URL; COD হলে /order-success
+ */
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';

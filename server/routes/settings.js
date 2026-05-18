@@ -1,3 +1,9 @@
+/**
+ * সাইট সেটিংস API — settings টেবিল (key-value)
+ * GET  /           — admin: সব কী; অতিথি: শুধু PUBLIC_SETTING_KEYS (Pixel ID, শিপিং…)
+ * PUT  /:key       — admin এক কী আপডেট (Meta Pixel, SMTP, Steadfast…)
+ * PUT  /steadfast  — Steadfast একসাথে সেভ
+ */
 const express = require('express');
 const router = express.Router();
 const db = require('../db');

@@ -1,4 +1,5 @@
 -- Qismat E-commerce Structure
+-- বাংলা গাইড: docs/BANGLA_GUIDE.md | API: docs/API.md
 -- Deploy: run structure.sql on the server, then data.sql for seeds (idempotent WHERE NOT EXISTS).
 -- Database name (production): qismyirz_qismat — create in cPanel → MySQL® Databases, then import here via phpMyAdmin (select that DB first).
 -- Optional local/VPS: uncomment next line if your MySQL user may create databases; on shared cPanel, skip and only use USE below.
@@ -11,6 +12,8 @@ USE `qismyirz_qismat`;
 --   Categories: catalog_extra_categories (JSON array of admin-added names; merged with DISTINCT product.category + General),
 --               catalog_category_images (JSON object: category name → image URL path under /uploads/…)
 --   Brands: `brands` table (id, name, logo_url); `products.brand_id` optional FK-style reference
+--   Facebook ad landing (per product): products.landing_enabled, products.landing_slides (JSON image paths),
+--     products.landing_video_url (/uploads/… file or YouTube/Vimeo URL) — public page /lp/:id
 --   Gallery: `gallery_items` (kind image|video, src path or https embed URL, caption, sort_order)
 --   Payments: ssl_store_id, ssl_store_password, ssl_is_live, is_payment_enabled
 --   Couriers API: steadfast_api_key, steadfast_secret_key, steadfast_api_base_url (default https://portal.packzy.com/api/v1; old portal.steadfast.com.bd is dead DNS),
@@ -33,6 +36,9 @@ ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `regular_price` DECIMAL(10,2) NU
 ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `preorder_available_date` DATE NULL AFTER `stock`;
 ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `pricing_options` JSON NULL AFTER `colors`;
 ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `brand_id` INT NULL AFTER `category`;
+ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `landing_enabled` TINYINT(1) NOT NULL DEFAULT 0 AFTER `is_active`;
+ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `landing_slides` JSON NULL AFTER `landing_enabled`;
+ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `landing_video_url` VARCHAR(500) NULL AFTER `landing_slides`;
 ALTER TABLE `couriers` ADD COLUMN IF NOT EXISTS `shipping_inside_dhaka` DECIMAL(10,2) NULL AFTER `base_rate`;
 ALTER TABLE `couriers` ADD COLUMN IF NOT EXISTS `shipping_outside_dhaka` DECIMAL(10,2) NULL AFTER `shipping_inside_dhaka`;
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `delivery_method` VARCHAR(20) NULL AFTER `customer_address`;
@@ -84,6 +90,9 @@ CREATE TABLE IF NOT EXISTS `products` (
   `stock` INT NOT NULL DEFAULT 0,
   `preorder_available_date` DATE NULL,
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `landing_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+  `landing_slides` JSON NULL,
+  `landing_video_url` VARCHAR(500) NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

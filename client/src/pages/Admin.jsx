@@ -1,4 +1,14 @@
-﻿import { Fragment, useEffect, useMemo, useState } from 'react';
+﻿/**
+ * ============================================================
+ * Admin প্যানেল — এক ফাইলে সব ম্যানেজমেন্ট
+ * ============================================================
+ * পণ্য | অর্ডার | কুপন | কুরিয়ার | ইউজার | সেটিংস
+ * Meta Pixel/CAPI, Steadfast, SMTP, হিরো, গ্যালারি, ল্যান্ডিং চালু
+ * সেটিং সেভ: updateSetting() → PUT /api/settings/:key
+ * বিস্তারিত: docs/BANGLA_GUIDE.md
+ * ============================================================
+ */
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { resolveImageUrl } from '../utils/image';
@@ -143,6 +153,8 @@ function Admin() {
     brand_id: '',
     sizes: '',
     colors: '',
+    landing_enabled: false,
+    landing_video_url: '',
   });
   const [newPricingOptionRows, setNewPricingOptionRows] = useState([{ label: '', price: '' }]);
   const [editingPricingOptionRows, setEditingPricingOptionRows] = useState([{ label: '', price: '' }]);
@@ -153,6 +165,12 @@ function Admin() {
   const [editingGalleryUrlLines, setEditingGalleryUrlLines] = useState('');
   const [editingGalleryFiles, setEditingGalleryFiles] = useState([]);
   const [editingProductImage, setEditingProductImage] = useState(null);
+  const [newLandingSlideFiles, setNewLandingSlideFiles] = useState([]);
+  const [newLandingSlideUrlLines, setNewLandingSlideUrlLines] = useState('');
+  const [editingLandingSlideFiles, setEditingLandingSlideFiles] = useState([]);
+  const [editingLandingSlideUrlLines, setEditingLandingSlideUrlLines] = useState('');
+  const [newLandingVideoFile, setNewLandingVideoFile] = useState(null);
+  const [editingLandingVideoFile, setEditingLandingVideoFile] = useState(null);
   const [newCourier, setNewCourier] = useState({
     name: '',
     phone: '',
@@ -365,6 +383,12 @@ function Admin() {
       payload.append('gallery_json', JSON.stringify(urlExtras));
       newGalleryFiles.forEach((file) => payload.append('gallery', file));
       if (newProductImage) payload.append('image', newProductImage);
+      payload.append('landing_enabled', newProduct.landing_enabled ? '1' : '0');
+      if (newLandingVideoFile) payload.append('landing_video', newLandingVideoFile);
+      else payload.append('landing_video_url', newProduct.landing_video_url || '');
+      const landingUrlExtras = parseGalleryUrlLines(newLandingSlideUrlLines);
+      payload.append('landing_slides_json', JSON.stringify(landingUrlExtras));
+      newLandingSlideFiles.forEach((file) => payload.append('landing_slides', file));
 
       await fetch(apiUrl('/api/products'), {
         method: 'POST',
@@ -383,11 +407,16 @@ function Admin() {
         brand_id: '',
         sizes: '',
         colors: '',
+        landing_enabled: false,
+        landing_video_url: '',
       });
       setNewPricingOptionRows([{ label: '', price: '' }]);
       setNewProductImage(null);
       setNewGalleryFiles([]);
       setNewGalleryUrlLines('');
+      setNewLandingSlideFiles([]);
+      setNewLandingSlideUrlLines('');
+      setNewLandingVideoFile(null);
       fetchAdminData();
     } catch (error) {
       console.error('Error creating product:', error);
@@ -683,6 +712,14 @@ function Admin() {
       editingGalleryFiles.forEach((file) => payload.append('gallery', file));
       payload.append('image', editingProduct.image || '');
       if (editingProductImage) payload.append('image', editingProductImage);
+      payload.append('landing_enabled', editingProduct.landing_enabled ? '1' : '0');
+      if (editingLandingVideoFile) payload.append('landing_video', editingLandingVideoFile);
+      else payload.append('landing_video_url', editingProduct.landing_video_url || '');
+      if (editingProduct.clear_landing_video) payload.append('clear_landing_video', '1');
+      const landingUrlExtras = parseGalleryUrlLines(editingLandingSlideUrlLines);
+      const landingBase = Array.isArray(editingProduct.landing_slides) ? editingProduct.landing_slides : [];
+      payload.append('landing_slides_json', JSON.stringify([...landingBase, ...landingUrlExtras]));
+      editingLandingSlideFiles.forEach((file) => payload.append('landing_slides', file));
 
       await fetch(apiUrl(`/api/products/${editingProduct.id}`), {
         method: 'PUT',
@@ -694,6 +731,9 @@ function Admin() {
       setEditingProductImage(null);
       setEditingGalleryFiles([]);
       setEditingGalleryUrlLines('');
+      setEditingLandingSlideFiles([]);
+      setEditingLandingSlideUrlLines('');
+      setEditingLandingVideoFile(null);
       fetchAdminData();
       toast.success('Product updated');
     } catch (error) {
@@ -2063,6 +2103,70 @@ function Admin() {
                   className="w-full rounded-sm border border-slate-200 bg-white px-4 py-3"
                   rows="4"
                 />
+                <motion.div className="rounded-sm border border-dashed border-brand-200 bg-brand-50/40 p-4 space-y-4">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={!!newProduct.landing_enabled}
+                      onChange={(e) => setNewProduct({ ...newProduct, landing_enabled: e.target.checked })}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">Facebook ad landing page</span>
+                      <span className="mt-0.5 block text-xs text-slate-600">
+                        When on, this product gets a dedicated page at <code className="text-[11px]">/lp/[id]</code> with promo slides + video and checkout.
+                      </span>
+                    </span>
+                  </label>
+                  {newProduct.landing_enabled ? (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">Promo slides (left side)</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={(e) => setNewLandingSlideFiles(Array.from(e.target.files || []))}
+                          className="w-full text-sm text-slate-600"
+                        />
+                        <textarea
+                          value={newLandingSlideUrlLines}
+                          onChange={(e) => setNewLandingSlideUrlLines(e.target.value)}
+                          placeholder="Or image URLs, one per line"
+                          rows={2}
+                          className="mt-2 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">Promo video (right side)</label>
+                        <input
+                          type="file"
+                          accept="video/mp4,video/webm,video/quicktime,video/*"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0] || null;
+                            setNewLandingVideoFile(f);
+                            if (f) setNewProduct({ ...newProduct, landing_video_url: '' });
+                          }}
+                          className="mb-2 w-full text-sm text-slate-600"
+                        />
+                        {newLandingVideoFile ? (
+                          <p className="mb-2 text-xs text-sage-800">Selected: {newLandingVideoFile.name}</p>
+                        ) : null}
+                        <input
+                          value={newProduct.landing_video_url || ''}
+                          onChange={(e) => {
+                            setNewProduct({ ...newProduct, landing_video_url: e.target.value });
+                            if (e.target.value.trim()) setNewLandingVideoFile(null);
+                          }}
+                          placeholder="অথবা YouTube / Vimeo link"
+                          disabled={!!newLandingVideoFile}
+                          className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                        />
+                        <p className="mt-1 text-xs text-slate-500">PC থেকে MP4/WebM upload অথবা YouTube link — সর্বোচ্চ ১০০MB</p>
+                      </div>
+                    </>
+                  ) : null}
+                </motion.div>
                 <button className="rounded-sm bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800">
                   Add Product
                 </button>
@@ -2131,21 +2235,28 @@ function Admin() {
                             })()}
                           </td>
                           <td className="whitespace-nowrap px-2 py-1.5">
-                            <span
-                              className={`inline-flex max-w-[11rem] flex-wrap rounded-sm px-2 py-0.5 text-[11px] font-semibold ${
-                                Number(product.stock) > 0
-                                  ? 'bg-sage-100 text-sage-800'
+                            <div className="flex max-w-[11rem] flex-col gap-1">
+                              <span
+                                className={`inline-flex flex-wrap rounded-sm px-2 py-0.5 text-[11px] font-semibold ${
+                                  Number(product.stock) > 0
+                                    ? 'bg-sage-100 text-sage-800'
+                                    : product.preorder_available_date
+                                      ? 'bg-peach-100 text-peach-900'
+                                      : 'bg-brand-100 text-brand-800'
+                                }`}
+                              >
+                                {Number(product.stock) > 0
+                                  ? 'In stock'
                                   : product.preorder_available_date
-                                    ? 'bg-peach-100 text-peach-900'
-                                    : 'bg-brand-100 text-brand-800'
-                              }`}
-                            >
-                              {Number(product.stock) > 0
-                                ? 'In stock'
-                                : product.preorder_available_date
-                                  ? `Pre-order · ${formatPreorderDateLabel(product.preorder_available_date)}`
-                                  : 'Out of stock'}
-                            </span>
+                                    ? `Pre-order · ${formatPreorderDateLabel(product.preorder_available_date)}`
+                                    : 'Out of stock'}
+                              </span>
+                              {product.landing_enabled ? (
+                                <span className="inline-flex rounded-sm bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-900">
+                                  Ad landing
+                                </span>
+                              ) : null}
+                            </div>
                           </td>
                           <td className="whitespace-nowrap px-2 py-1.5 text-right">
                             <span className="inline-flex items-center justify-end gap-1.5">
@@ -2158,6 +2269,8 @@ function Admin() {
                                     setEditingProductImage(null);
                                     setEditingGalleryFiles([]);
                                     setEditingGalleryUrlLines('');
+                                    setEditingLandingSlideFiles([]);
+                                    setEditingLandingSlideUrlLines('');
                                     return;
                                   }
                                   const p = { ...product };
@@ -2172,6 +2285,9 @@ function Admin() {
                                   p.preorder_available_date = pd;
                                   p.availability = stockToAvailability(p.stock, pd);
                                   p.brand_id = product.brand?.id != null ? String(product.brand.id) : '';
+                                  p.landing_enabled = !!product.landing_enabled;
+                                  p.landing_video_url = product.landing_video_url || '';
+                                  if (!Array.isArray(p.landing_slides)) p.landing_slides = [];
                                   setEditingPricingOptionRows(
                                     Array.isArray(product.pricing_options) && product.pricing_options.length
                                       ? product.pricing_options.map((o) => ({
@@ -2185,6 +2301,9 @@ function Admin() {
                                   setEditingProductImage(null);
                                   setEditingGalleryFiles([]);
                                   setEditingGalleryUrlLines('');
+                                  setEditingLandingSlideFiles([]);
+                                  setEditingLandingSlideUrlLines('');
+                                  setEditingLandingVideoFile(null);
                                 }}
                                 className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold shadow-sm ${
                                   expandedProductId === product.id
@@ -2494,6 +2613,162 @@ function Admin() {
                                   className="w-full rounded-sm border border-slate-200 bg-white px-4 py-3 text-sm"
                                   required
                                 />
+                                <div className="rounded-sm border border-dashed border-brand-200 bg-brand-50/40 p-4 space-y-4">
+                                  <label className="flex cursor-pointer items-start gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!editingProduct.landing_enabled}
+                                      onChange={(e) =>
+                                        setEditingProduct({ ...editingProduct, landing_enabled: e.target.checked })
+                                      }
+                                      className="mt-1"
+                                    />
+                                    <span>
+                                      <span className="block text-sm font-semibold text-slate-900">Facebook ad landing page</span>
+                                      <span className="mt-0.5 block text-xs text-slate-600">
+                                        Public URL:{' '}
+                                        <span className="font-mono text-[11px]">
+                                          {typeof window !== 'undefined'
+                                            ? `${window.location.origin}/lp/${editingProduct.id}`
+                                            : `/lp/${editingProduct.id}`}
+                                        </span>
+                                      </span>
+                                    </span>
+                                  </label>
+                                  {editingProduct.landing_enabled ? (
+                                    <>
+                                      <motion.div className="flex flex-wrap gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const url =
+                                              typeof window !== 'undefined'
+                                                ? `${window.location.origin}/lp/${editingProduct.id}`
+                                                : `/lp/${editingProduct.id}`;
+                                            navigator.clipboard?.writeText(url);
+                                            toast.success('Landing link copied');
+                                          }}
+                                          className="rounded-sm border border-brand-300 bg-white px-3 py-1.5 text-xs font-semibold text-brand-800 hover:bg-brand-50"
+                                        >
+                                          Copy ad link
+                                        </button>
+                                        <a
+                                          href={`/lp/${editingProduct.id}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="rounded-sm border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                          Preview page
+                                        </a>
+                                      </motion.div>
+                                      <div>
+                                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                                          Promo slides (left side)
+                                        </label>
+                                        {(Array.isArray(editingProduct.landing_slides) ? editingProduct.landing_slides : [])
+                                          .length > 0 ? (
+                                          <div className="mb-3 flex flex-wrap gap-2">
+                                            {(editingProduct.landing_slides || []).map((g, idx) => (
+                                              <div key={`${g}-${idx}`} className="relative shrink-0">
+                                                <img
+                                                  src={resolveImageUrl(g)}
+                                                  alt=""
+                                                  className="h-20 w-20 rounded-sm border border-slate-200 object-cover"
+                                                />
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const next = [...(editingProduct.landing_slides || [])];
+                                                    next.splice(idx, 1);
+                                                    setEditingProduct({ ...editingProduct, landing_slides: next });
+                                                  }}
+                                                  className="mt-1 w-full rounded-sm border border-brand-200 px-2 py-0.5 text-[10px] font-semibold text-brand-700"
+                                                >
+                                                  Remove
+                                                </button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <p className="mb-2 text-xs text-slate-500">No promo slides yet — uses product photos on the page.</p>
+                                        )}
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          multiple
+                                          onChange={(e) => setEditingLandingSlideFiles(Array.from(e.target.files || []))}
+                                          className="w-full text-sm text-slate-600"
+                                        />
+                                        <textarea
+                                          value={editingLandingSlideUrlLines}
+                                          onChange={(e) => setEditingLandingSlideUrlLines(e.target.value)}
+                                          placeholder="Or image URLs, one per line"
+                                          rows={2}
+                                          className="mt-2 w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="mb-2 block text-sm font-semibold text-slate-700">
+                                          Promo video (right side)
+                                        </label>
+                                        {editingProduct.landing_video_url &&
+                                        !editingProduct.clear_landing_video &&
+                                        !editingLandingVideoFile ? (
+                                          <motion.div className="mb-3 rounded-sm border border-slate-200 bg-white p-2 text-xs text-slate-600">
+                                            <p className="truncate font-mono">{editingProduct.landing_video_url}</p>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setEditingProduct({
+                                                  ...editingProduct,
+                                                  landing_video_url: '',
+                                                  clear_landing_video: true,
+                                                })
+                                              }
+                                              className="mt-2 rounded-sm border border-brand-200 px-2 py-1 text-[11px] font-semibold text-brand-700"
+                                            >
+                                              Remove current video
+                                            </button>
+                                          </motion.div>
+                                        ) : null}
+                                        <input
+                                          type="file"
+                                          accept="video/mp4,video/webm,video/quicktime,video/*"
+                                          onChange={(e) => {
+                                            const f = e.target.files?.[0] || null;
+                                            setEditingLandingVideoFile(f);
+                                            if (f) {
+                                              setEditingProduct({
+                                                ...editingProduct,
+                                                landing_video_url: '',
+                                                clear_landing_video: false,
+                                              });
+                                            }
+                                          }}
+                                          className="mb-2 w-full text-sm text-slate-600"
+                                        />
+                                        {editingLandingVideoFile ? (
+                                          <p className="mb-2 text-xs text-sage-800">
+                                            New file: {editingLandingVideoFile.name} (save to apply)
+                                          </p>
+                                        ) : null}
+                                        <input
+                                          value={editingProduct.landing_video_url || ''}
+                                          onChange={(e) =>
+                                            setEditingProduct({
+                                              ...editingProduct,
+                                              landing_video_url: e.target.value,
+                                              clear_landing_video: false,
+                                            })
+                                          }
+                                          placeholder="অথবা YouTube / Vimeo link"
+                                          disabled={!!editingLandingVideoFile}
+                                          className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
+                                        />
+                                      </div>
+                                    </>
+                                  ) : null}
+                                </div>
                                 <div className="flex flex-wrap gap-3">
                                   <button
                                     type="submit"
@@ -2510,6 +2785,9 @@ function Admin() {
                                       setEditingProductImage(null);
                                       setEditingGalleryFiles([]);
                                       setEditingGalleryUrlLines('');
+                                      setEditingLandingSlideFiles([]);
+                                      setEditingLandingSlideUrlLines('');
+                                      setEditingLandingVideoFile(null);
                                     }}
                                     className="rounded-sm border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                                   >

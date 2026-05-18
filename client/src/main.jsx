@@ -1,3 +1,7 @@
+/**
+ * React অ্যাপ শুরু — BrowserRouter, StorefrontContext (যোগাযোগ/সেটিংস), Toaster
+ * থিম localStorage থেকে লোড; JWT session hydrate
+ */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

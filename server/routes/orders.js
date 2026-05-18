@@ -1,3 +1,10 @@
+/**
+ * অর্ডার API — তৈরি, তালিকা, স্ট্যাটাস, Steadfast ডিসপ্যাচ
+ * POST / — চেকআউট/ল্যান্ডিং থেকে নতুন অর্ডার
+ *   - COD হলে সাথে সাথে Facebook CAPI Purchase
+ *   - Online/API পেমেন্ট হলে payment.js সফল হলে CAPI যায়
+ * body-তে facebook_fbp, facebook_fbc পাঠালে Meta অ্যাট্রিবিউশন ভালো হয়
+ */
 const express = require('express');
 const db = require('../db');
 const { initPayment } = require('../controllers/paymentController');

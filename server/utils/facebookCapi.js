@@ -1,3 +1,19 @@
+/**
+ * ============================================================
+ * Meta Conversions API (সার্ভার-সাইড Facebook Purchase)
+ * ============================================================
+ * Admin সেটিংস থেকে লাগে:
+ *   - facebook_pixel_id
+ *   - facebook_capi_access_token
+ *   - facebook_test_event_code (ঐচ্ছিক — Test Events ট্যাবে দেখাবে)
+ *
+ * কখন কল হয়:
+ *   - COD/ম্যানুয়াল পেমেন্ট: orders.js অর্ডার তৈরির পর
+ *   - অনলাইন পেমেন্ট: payment.js সফল কলব্যাকে
+ *
+ * event_id = purchase-order-{orderId} — ব্রাউজার Pixel-এর সাথে মিলিয়ে ডুপ্লিকেট কমায়
+ * ============================================================
+ */
 const crypto = require('crypto');
 const axios = require('axios');
 const db = require('../db');

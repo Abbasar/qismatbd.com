@@ -1,0 +1,10 @@
+/* Landing hero — same bazaar swiper as homepage, tighter dots (no category overlay) */
+.hero-swiper.hero-swiper--landing .swiper-pagination {
+  bottom: 0.85rem !important;
+}
+
+@media (min-width: 640px) {
+  .hero-swiper.hero-swiper--landing .swiper-pagination {
+    bottom: 1rem !important;
+  }
+}

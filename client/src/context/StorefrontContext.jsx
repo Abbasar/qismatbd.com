@@ -1,3 +1,7 @@
+/**
+ * স্টোরফ্রন্ট যোগাযোগ — GET /api/settings থেকে ফোন, WhatsApp, Facebook URL
+ * Header/Footer/ContactFloat এ ব্যবহার
+ */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { DEFAULT_STORE_CONTACT, settingsRowsToContact } from '../constants/storeContact';

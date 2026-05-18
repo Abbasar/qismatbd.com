@@ -98,7 +98,7 @@ function Home() {
   const [email, setEmail] = useState('');
   const [newsletterBusy, setNewsletterBusy] = useState(false);
   const categorySliderRef = useRef(null);
-  const categoryDragRef = useRef({ active: false, startX: 0, startScrollLeft: 0 });
+  const categoryDragRef = useRef({ active: false, didDrag: false, startX: 0, startScrollLeft: 0 });
   const brandsSwiperRef = useRef(null);
   const [brandsNav, setBrandsNav] = useState({ atStart: true, atEnd: false });
   const [brandsSwiperLocked, setBrandsSwiperLocked] = useState(true);
@@ -242,10 +242,14 @@ function Home() {
   };
 
   const onCategoryPointerDown = (e) => {
+    if (e.button !== 0) return;
+    // Let category links receive normal clicks (no drag capture on <a>)
+    if (e.target.closest('a')) return;
     const slider = categorySliderRef.current;
     if (!slider) return;
     categoryDragRef.current = {
       active: true,
+      didDrag: false,
       startX: e.clientX,
       startScrollLeft: slider.scrollLeft,
     };
@@ -257,6 +261,7 @@ function Home() {
     const slider = categorySliderRef.current;
     if (!slider || !categoryDragRef.current.active) return;
     const dragDistance = e.clientX - categoryDragRef.current.startX;
+    if (Math.abs(dragDistance) > 6) categoryDragRef.current.didDrag = true;
     slider.scrollLeft = categoryDragRef.current.startScrollLeft - dragDistance;
   };
 
@@ -268,6 +273,14 @@ function Home() {
     }
     categoryDragRef.current.active = false;
     slider.style.cursor = 'grab';
+  };
+
+  const onCategorySliderClickCapture = (e) => {
+    if (categoryDragRef.current.didDrag) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    categoryDragRef.current.didDrag = false;
   };
 
   return (
@@ -290,8 +303,8 @@ function Home() {
               কোনো ক্যাটাগরি নেই। <span className="font-semibold">Admin → Products</span> থেকে ক্যাটাগরি যোগ করুন। General এখানে টাইল হিসেবে দেখায় না।
             </p>
           ) : (
-            <div className="pointer-events-none w-full px-1 sm:px-2">
-              <div className="pointer-events-auto relative mx-auto w-full max-w-[min(100%,26rem)] rounded border border-stone-200/90 bg-white px-3 py-3 shadow-[0_12px_40px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] sm:max-w-3xl  sm:px-5 sm:py-4 md:max-w-4xl lg:max-w-5xl">
+            <div className="w-full px-1 sm:px-2">
+              <div className="relative mx-auto w-full max-w-[min(100%,26rem)] rounded border border-stone-200/90 bg-white px-3 py-3 shadow-[0_12px_40px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] sm:max-w-3xl sm:px-5 sm:py-4 md:max-w-4xl lg:max-w-5xl">
                 <div className="relative md:px-10">
                   <button
                     type="button"
@@ -315,7 +328,9 @@ function Home() {
                     onPointerDown={onCategoryPointerDown}
                     onPointerMove={onCategoryPointerMove}
                     onPointerUp={onCategoryPointerUp}
+                    onPointerCancel={onCategoryPointerUp}
                     onPointerLeave={onCategoryPointerUp}
+                    onClickCapture={onCategorySliderClickCapture}
                   >
                     {categoryTiles.map((tile, idx) => (
                       <motion.div

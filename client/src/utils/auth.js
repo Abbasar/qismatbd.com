@@ -1,3 +1,7 @@
+/**
+ * লগইন সেশন — JWT localStorage/sessionStorage-এ
+ * getAuthHeader() → API-তে Authorization: Bearer …
+ */
 const STORAGE_KEY = 'qismat-user';
 const TOKEN_KEY = 'qismat-token';
 const REMEMBER_KEY = 'qismat-remember';

@@ -1,3 +1,7 @@
+/**
+ * SSLCommerz পেমেন্ট কলব্যাক — success/fail/cancel/ipn
+ * success-এ অর্ডার Paid + Facebook CAPI Purchase + /order-success রিডাইরেক্ট
+ */
 const express = require('express');
 const SSLCommerzPayment = require('sslcommerz-lts');
 const router = express.Router();

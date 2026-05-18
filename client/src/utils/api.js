@@ -1,4 +1,8 @@
 /**
+ * API বেস URL ও fetch হেল্পার
+ * Dev: Vite প্রক্সি → same-origin `/api`
+ * Prod: VITE_API_URL অথবা same-origin reverse proxy
+ *
  * In dev, same-origin `/api` → Vite proxy.
  * In prod: `VITE_API_URL` if set; empty string in `.env` means same-origin `/api` (Apache/nginx reverse proxy).
  * Otherwise default `http://localhost:4000`.

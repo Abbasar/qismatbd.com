@@ -16,7 +16,7 @@
 1. পিসিতে: `server` ফোল্ডারে `.env` তৈরি — `server/.env.example` কপি করে ভরুন  
    (`DB_*`, `JWT_SECRET`, `NODE_ENV=production`, `BACKEND_URL`, `FRONTEND_URL`, `CORS_ORIGIN`, ইত্যাদি)।
 2. লাইভে আপলোড করুন: পুরো **`server/`** (কোড + `package.json`; **`node_modules` আপলোড করবেন না**, সার্ভারে `npm install --production` চালাবেন)।
-3. cPanel **Node.js** অ্যাপ: application root = যে ফোল্ডারে `index.js`, startup file `index.js`, `npm install` → Restart।
+3. cPanel **Node.js** অ্যাপ: application root = `server` ফোল্ডার, **startup file `app.js`**, `npm install` → Restart। (`index.js` পুরনো — `app.js` চালায়।)
 4. টেস্ট: ব্রাউজারে `https://আপনার-api-ডোমেইন/api/health`।
 
 ---

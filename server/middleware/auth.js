@@ -1,3 +1,9 @@
+/**
+ * JWT অথেন্টিকেশন — লগইনের পর ক্লায়েন্ট Bearer টোকেন পাঠায়।
+ * tryVerifyToken  — ঐচ্ছিক (সেটিংস GET-এ admin চেনার জন্য)
+ * requireAuth     — লগইন বাধ্যতামূলক
+ * requireAdmin    — role === 'admin' লাগে
+ */
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me';

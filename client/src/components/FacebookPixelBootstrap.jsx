@@ -2,7 +2,9 @@ import { useEffect } from 'react';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 
 /**
- * Loads Meta Pixel (client-side) when `facebook_pixel_id` is set in public settings.
+ * Meta Pixel (ব্রাউজার) — Admin-এর facebook_pixel_id থাকলে লোড হয়
+ * PageView: সাইট খোলার সময় | Purchase: OrderSuccess.jsx-এ
+ * সার্ভার CAPI: server/utils/facebookCapi.js (আলাদা token লাগে)
  */
 export default function FacebookPixelBootstrap() {
   useEffect(() => {

@@ -1,3 +1,8 @@
+/**
+ * MySQL কানেকশন পুল — সব রাউট এখান থেকে db.query() ব্যবহার করে।
+ * .env: DB_HOST, DB_USER, DB_PASSWORD, DB_DATABASE
+ * সংযোগ ভেঙে গেলে (ECONNRESET) অটো পুনরায় pool তৈরি করে।
+ */
 const mysql = require('mysql2/promise');
 
 const config = {

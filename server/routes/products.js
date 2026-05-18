@@ -1,3 +1,7 @@
+/**
+ * পণ্য API — CRUD, ক্যাটাগরি মেটা, Facebook ল্যান্ডিং
+ * GET /landing/:id — শুধু landing_enabled=1 পণ্য (/lp/:id পেজে ব্যবহার)
+ */
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -18,16 +22,22 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
+    if (file.fieldname === 'landing_video') {
+      if (file.mimetype.startsWith('video/')) return cb(null, true);
+      return cb(new Error('Landing video must be a video file (MP4, WebM, etc.)'));
+    }
     if (file.mimetype.startsWith('image/')) return cb(null, true);
-    cb(new Error('Only image files are allowed'));
+    cb(new Error('Only image files are allowed for this field'));
   },
 });
 
 const uploadFields = upload.fields([
   { name: 'image', maxCount: 1 },
   { name: 'gallery', maxCount: 20 },
+  { name: 'landing_slides', maxCount: 15 },
+  { name: 'landing_video', maxCount: 1 },
 ]);
 
 /** Canonical ordered URLs/filenames: main first, extras without duplicates. */
@@ -78,7 +88,7 @@ const normalizeProduct = (row) => {
   if (Object.prototype.hasOwnProperty.call(o, 'preorder_available_date')) {
     o.preorder_available_date = formatPreorderDate(o.preorder_available_date);
   }
-  ['gallery', 'sizes', 'colors'].forEach((k) => {
+  ['gallery', 'sizes', 'colors', 'landing_slides'].forEach((k) => {
     let v = o[k];
     if (v == null) {
       o[k] = [];
@@ -128,7 +138,40 @@ const normalizeProduct = (row) => {
   }
   delete o.brand_name;
   delete o.brand_logo;
+  if (Object.prototype.hasOwnProperty.call(o, 'landing_enabled')) {
+    o.landing_enabled = Number(o.landing_enabled) === 1;
+  }
   return o;
+};
+
+const parseBoolBody = (body, key) => {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return undefined;
+  const raw = body[key];
+  if (raw === true || raw === 1 || raw === '1' || raw === 'true' || raw === 'on') return 1;
+  return 0;
+};
+
+const parseLandingSlidesBody = (body, existingSlides, files) => {
+  let slides = Array.isArray(existingSlides) ? [...existingSlides] : [];
+  if (Object.prototype.hasOwnProperty.call(body, 'landing_slides_json')) {
+    const parsed = parseArrayField(body.landing_slides_json);
+    if (Array.isArray(parsed)) slides = [...parsed];
+  }
+  if (files?.length) {
+    slides = [...slides, ...files.map((f) => f.filename)];
+  }
+  return [...new Set(slides.filter(Boolean))];
+};
+
+const parseLandingVideoUrl = (body, existingUrl, videoFile) => {
+  if (videoFile?.filename) return `/uploads/${videoFile.filename}`;
+  if (Object.prototype.hasOwnProperty.call(body, 'landing_video_url')) {
+    const s = String(body.landing_video_url || '').trim();
+    return s || null;
+  }
+  if (body.clear_landing_video === '1' || body.clear_landing_video === 'true') return null;
+  const prev = existingUrl != null ? String(existingUrl).trim() : '';
+  return prev || null;
 };
 
 const PRODUCT_FROM =
@@ -432,6 +475,26 @@ router.get('/highlights', async (req, res) => {
   }
 });
 
+/** Facebook বিজ্ঞাপন ল্যান্ডিং — ক্লায়েন্ট ProductLanding.jsx */
+router.get('/landing/:id', async (req, res) => {
+  try {
+    const rows = await queryProductsJoined(
+      `${PRODUCT_FROM} WHERE p.id = ?`,
+      [req.params.id],
+      'SELECT * FROM products WHERE id = ?',
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Product not found' });
+    const product = normalizeProduct(rows[0]);
+    if (!product.landing_enabled) {
+      return res.status(404).json({ message: 'Landing page is not enabled for this product' });
+    }
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ message: 'Unable to load landing page', error: error.message });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const rows = await queryProductsJoined(
@@ -505,11 +568,17 @@ router.post('/', requireAuth, requireAdmin, uploadFields, async (req, res) => {
     const colorsJson = colors && colors.length ? JSON.stringify(colors) : null;
     const galleryJson = gallery.length ? JSON.stringify(gallery) : null;
 
+    const landingEnabled = parseBoolBody(req.body, 'landing_enabled');
+    const landingSlides = parseLandingSlidesBody(req.body, [], req.files?.landing_slides);
+    const landingSlidesJson = landingSlides.length ? JSON.stringify(landingSlides) : null;
+    const landingVideoFile = req.files?.landing_video?.[0];
+    const landingVideoUrl = parseLandingVideoUrl(req.body, null, landingVideoFile);
+
     let result;
     try {
       ;[result] = await db.query(
-        `INSERT INTO products (name, price, regular_price, image, gallery, sizes, colors, pricing_options, description, stock, preorder_available_date, category, brand_id) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO products (name, price, regular_price, image, gallery, sizes, colors, pricing_options, description, stock, preorder_available_date, category, brand_id, landing_enabled, landing_slides, landing_video_url) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           name,
           price,
@@ -524,6 +593,9 @@ router.post('/', requireAuth, requireAdmin, uploadFields, async (req, res) => {
           preorderDate,
           category || 'General',
           brandId,
+          landingEnabled != null ? landingEnabled : 0,
+          landingSlidesJson,
+          landingVideoUrl,
         ]
       );
     } catch (e) {
@@ -651,9 +723,24 @@ router.put('/:id', requireAuth, requireAdmin, uploadFields, async (req, res) => 
     const colorsJson = colors.length ? JSON.stringify(colors) : null;
     const galleryJson = gallery.length ? JSON.stringify(gallery) : null;
 
+    const landingEnabled =
+      parseBoolBody(req.body, 'landing_enabled') != null
+        ? parseBoolBody(req.body, 'landing_enabled')
+        : existing.landing_enabled
+          ? 1
+          : 0;
+    const landingSlides = parseLandingSlidesBody(
+      req.body,
+      existing.landing_slides || [],
+      req.files?.landing_slides
+    );
+    const landingSlidesJson = landingSlides.length ? JSON.stringify(landingSlides) : null;
+    const landingVideoFile = req.files?.landing_video?.[0];
+    const landingVideoUrl = parseLandingVideoUrl(req.body, existing.landing_video_url, landingVideoFile);
+
     try {
       await db.query(
-        `UPDATE products SET name = ?, price = ?, regular_price = ?, image = ?, gallery = ?, sizes = ?, colors = ?, pricing_options = ?, description = ?, stock = ?, preorder_available_date = ?, category = ?, brand_id = ? WHERE id = ?`,
+        `UPDATE products SET name = ?, price = ?, regular_price = ?, image = ?, gallery = ?, sizes = ?, colors = ?, pricing_options = ?, description = ?, stock = ?, preorder_available_date = ?, category = ?, brand_id = ?, landing_enabled = ?, landing_slides = ?, landing_video_url = ? WHERE id = ?`,
         [
           name,
           price,
@@ -668,6 +755,9 @@ router.put('/:id', requireAuth, requireAdmin, uploadFields, async (req, res) => 
           preorderDate,
           category || 'General',
           brandId,
+          landingEnabled,
+          landingSlidesJson,
+          landingVideoUrl,
           req.params.id,
         ]
       );

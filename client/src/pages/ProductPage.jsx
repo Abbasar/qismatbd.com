@@ -551,7 +551,7 @@ function ProductPage() {
         {relatedProducts.length > 0 && (
           <section>
             <h2 className="text-2xl font-semibold text-stone-900">You may also like</h2>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
               {relatedProducts.map((relProduct) => {
                 const pr = displayPriceRange(relProduct);
                 const priceLabel = pr.single ? `৳${pr.min.toFixed(0)}` : `From ৳${pr.min.toFixed(0)}`;
@@ -559,14 +559,20 @@ function ProductPage() {
                 return (
                   <div key={relProduct.id} className="surface-card flex flex-col overflow-hidden">
                     <Link to={`/product/${relProduct.id}`} className="block shrink-0">
-                      <img src={resolveImageUrl(relProduct.image)} alt={relProduct.name} className="h-44 w-full object-cover sm:h-52" />
+                      <img
+                        src={resolveImageUrl(relProduct.image)}
+                        alt={relProduct.name}
+                        className="h-32 w-full object-cover sm:h-44 lg:h-52"
+                      />
                     </Link>
-                    <div className="flex flex-1 flex-col p-4 sm:p-5">
+                    <div className="flex flex-1 flex-col p-2.5 sm:p-5">
                       <Link to={`/product/${relProduct.id}`} className="block">
-                        <h3 className="font-semibold text-stone-900 transition hover:text-brand-600">{relProduct.name}</h3>
+                        <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-stone-900 transition hover:text-brand-600 sm:text-base">
+                          {relProduct.name}
+                        </h3>
                       </Link>
-                      <p className="mt-1 text-sm text-stone-600">{priceLabel}</p>
-                      <div className="mt-auto flex flex-col gap-2 pt-4">
+                      <p className="mt-0.5 text-xs text-stone-600 sm:mt-1 sm:text-sm">{priceLabel}</p>
+                      <div className="mt-auto flex flex-col gap-1.5 pt-2.5 sm:gap-2 sm:pt-4">
                         <button
                           type="button"
                           onClick={() => {
@@ -574,7 +580,7 @@ function ProductPage() {
                             navigate('/checkout');
                           }}
                           disabled={!canPurchaseProduct(relProduct)}
-                          className="w-full rounded-sm border-2 border-brand-600 bg-white py-2 text-xs font-semibold text-brand-900 transition hover:bg-brand-50 disabled:border-stone-300 disabled:text-stone-400 sm:text-sm"
+                          className="w-full rounded-sm border-2 border-brand-600 bg-white py-1.5 text-[10px] font-semibold text-brand-900 transition hover:bg-brand-50 disabled:border-stone-300 disabled:text-stone-400 sm:py-2 sm:text-sm"
                         >
                           {isPreorderProduct(relProduct) && Number(relProduct.stock) <= 0 ? 'Pre-order' : 'Buy now'}
                         </button>
@@ -585,7 +591,7 @@ function ProductPage() {
                             toast.success('Added to cart');
                           }}
                           disabled={!canPurchaseProduct(relProduct)}
-                          className="w-full rounded-sm bg-brand-600 py-2 text-xs font-semibold text-white transition hover:bg-brand-700 disabled:bg-stone-300 sm:text-sm"
+                          className="w-full rounded-sm bg-brand-600 py-1.5 text-[10px] font-semibold text-white transition hover:bg-brand-700 disabled:bg-stone-300 sm:py-2 sm:text-sm"
                         >
                           Add to cart
                         </button>
