@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { getAuthHeader, getCurrentUser } from '../utils/auth';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { resolveImageUrl } from '../utils/image';
+import { cartLineKey } from '../utils/cart';
+import { maxOrderQuantity } from '../utils/productAvailability';
 
 function readCookie(name) {
   const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -38,11 +40,11 @@ function isInsideDhakaDistrict(districtName, settings) {
 }
 
 const fieldClass = (err) =>
-  `mt-1.5 w-full rounded-lg border bg-white px-4 py-3 text-sm outline-none transition focus:ring-2 ${
+  `mt-1.5 w-full rounded-sm border bg-white px-4 py-3 text-sm outline-none transition focus:ring-2 ${
     err ? 'border-brand-400 ring-brand-100' : 'border-stone-200 focus:border-brand-400 focus:ring-brand-50'
   }`;
 
-export default function LandingCheckout({ lineItem, productName, showPreorder }) {
+export default function LandingCheckout({ orderItems, showPreorder, onQuantityChange }) {
   const navigate = useNavigate();
   const user = getCurrentUser();
 
@@ -134,7 +136,10 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
     return [streetAddress.trim(), thana, district].filter(Boolean).join(', ');
   }, [streetAddress, thana, district]);
 
-  const subtotal = lineItem ? Number(lineItem.price) * Number(lineItem.quantity) : 0;
+  const subtotal = orderItems.reduce(
+    (sum, item) => sum + Number(item.price) * Number(item.quantity),
+    0
+  );
 
   const shippingFee = useMemo(() => {
     const legacyInside = Number(settings.shipping_inside_dhaka || 60);
@@ -168,7 +173,6 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
 
   const discount = appliedCoupon ? Number(appliedCoupon.discount_amount || 0) : 0;
   const total = Math.max(0, subtotal + shippingFee - discount);
-  const orderItems = useMemo(() => (lineItem ? [lineItem] : []), [lineItem]);
 
   const fieldsOk = useMemo(() => {
     const e = {};
@@ -230,7 +234,7 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
       toast.error('সব তথ্য পূরণ করুন');
       return;
     }
-    if (!lineItem) {
+    if (!orderItems.length) {
       toast.error('পণ্য নির্বাচন করুন');
       return;
     }
@@ -276,12 +280,12 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
     }
   };
 
-  if (!lineItem) return null;
+  if (!orderItems.length) return null;
 
   return (
     <>
       <section id="checkout" className="scroll-mt-6">
-        <motion.div className="overflow-hidden rounded-lg border border-stone-200/80 bg-white shadow-lg shadow-stone-200/30">
+        <motion.div className="overflow-hidden rounded-sm border border-stone-200/80 bg-white shadow-lg shadow-stone-200/30">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -299,9 +303,80 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
-            className="grid lg:grid-cols-[1fr_300px]"
+            className="flex flex-col lg:grid lg:grid-cols-[1fr_300px]"
           >
-            <form onSubmit={openConfirm} className="space-y-5 p-5 sm:p-8">
+            <aside className="order-1 border-b border-stone-100 bg-stone-50 p-5 lg:order-2 lg:border-b-0 lg:border-l lg:p-8">
+              <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">সারাংশ</p>
+              <ul className="mt-4 space-y-4">
+                {orderItems.map((item) => {
+                  const key = cartLineKey(item);
+                  const maxQty = maxOrderQuantity(item);
+                  const lineTotal = Number(item.price) * Number(item.quantity);
+                  return (
+                    <li key={key} className="flex gap-3 border-b border-stone-200/80 pb-4 last:border-0 last:pb-0">
+                      <img
+                        src={resolveImageUrl(item.image)}
+                        alt={item.name}
+                        className="h-16 w-16 shrink-0 rounded-sm object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-sm font-semibold text-stone-900">{item.name}</p>
+                        {(item.selectedSize || item.selectedColor) && (
+                          <p className="mt-0.5 text-xs text-stone-500">
+                            {[item.selectedSize, item.selectedColor].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center rounded-sm border border-stone-200 bg-white">
+                            <button
+                              type="button"
+                              onClick={() => onQuantityChange(key, Number(item.quantity) - 1)}
+                              className="h-8 w-8 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                              aria-label="কমান"
+                            >
+                              −
+                            </button>
+                            <span className="min-w-[2ch] text-center text-sm font-semibold">{item.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => onQuantityChange(key, Number(item.quantity) + 1)}
+                              disabled={maxQty > 0 && Number(item.quantity) >= maxQty}
+                              className="h-8 w-8 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+                              aria-label="বাড়ান"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <span className="text-sm font-semibold text-stone-900">৳{lineTotal.toFixed(0)}</span>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <dl className="mt-6 space-y-2 border-t border-stone-200 pt-4 text-sm">
+                <div className="flex justify-between">
+                  <dt>পণ্য</dt>
+                  <dd>৳{subtotal.toFixed(2)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt>শিপিং</dt>
+                  <dd>৳{shippingFee.toFixed(2)}</dd>
+                </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-brand-700">
+                    <dt>কুপন</dt>
+                    <dd>-৳{discount.toFixed(2)}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-stone-200 pt-3 text-lg font-semibold">
+                  <dt>মোট</dt>
+                  <dd className="text-brand-700">৳{total.toFixed(2)}</dd>
+                </div>
+              </dl>
+            </aside>
+
+            <form onSubmit={openConfirm} className="order-2 space-y-5 p-5 sm:p-8 lg:order-1">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium text-stone-800">নাম *</label>
@@ -387,7 +462,7 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
                   ].map(({ id, label }) => (
                     <label
                       key={id}
-                      className={`flex cursor-pointer justify-center rounded-lg border py-3 text-sm font-semibold ${
+                      className={`flex cursor-pointer justify-center rounded-sm border py-3 text-sm font-semibold ${
                         deliveryMethod === id
                           ? 'border-brand-600 bg-brand-600 text-white'
                           : 'border-stone-200'
@@ -422,7 +497,7 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
 
               {(paymentType === 'Bkash' && settings.bkash_mode === 'manual') ||
               (paymentType === 'Nagad' && settings.nagad_mode === 'manual') ? (
-                <div className="rounded-lg bg-sage-50 p-4">
+                <div className="rounded-sm bg-sage-50 p-4">
                   <p className="text-sm">
                     Send: {paymentType === 'Bkash' ? settings.bkash_number : settings.nagad_number}
                   </p>
@@ -440,13 +515,13 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value)}
                   placeholder="কুপন কোড"
-                  className="min-w-0 flex-1 rounded-lg border border-stone-200 px-4 py-3 text-sm"
+                  className="min-w-0 flex-1 rounded-sm border border-stone-200 px-4 py-3 text-sm"
                 />
                 <button
                   type="button"
                   onClick={applyCoupon}
                   disabled={couponBusy}
-                  className="rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-800"
+                  className="rounded-sm border border-brand-200 bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-800"
                 >
                   {couponBusy ? '…' : 'Apply'}
                 </button>
@@ -454,46 +529,11 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
 
               <button
                 type="submit"
-                className="w-full rounded-lg bg-brand-600 py-4 text-base font-semibold text-white shadow-md hover:bg-brand-700"
+                className="w-full rounded-sm bg-brand-600 py-4 text-base font-semibold text-white shadow-md hover:bg-brand-700"
               >
                 {showPreorder ? 'প্রি-অর্ডার কনফার্ম' : 'অর্ডার কনফার্ম করুন'}
               </button>
             </form>
-
-            <aside className="border-t border-stone-100 bg-stone-50 p-5 lg:border-l lg:border-t-0 lg:p-8">
-              <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">সারাংশ</p>
-              <div className="mt-4 flex gap-4">
-                <img
-                  src={resolveImageUrl(lineItem.image)}
-                  alt={productName}
-                  className="h-20 w-20 rounded-lg object-cover"
-                />
-                <div>
-                  <p className="font-semibold text-stone-900">{productName}</p>
-                  <p className="text-sm text-stone-600">× {lineItem.quantity}</p>
-                </div>
-              </div>
-              <dl className="mt-6 space-y-2 border-t border-stone-200 pt-4 text-sm">
-                <div className="flex justify-between">
-                  <dt>পণ্য</dt>
-                  <dd>৳{subtotal.toFixed(2)}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt>শিপিং</dt>
-                  <dd>৳{shippingFee.toFixed(2)}</dd>
-                </div>
-                {discount > 0 && (
-                  <div className="flex justify-between text-brand-700">
-                    <dt>কুপন</dt>
-                    <dd>-৳{discount.toFixed(2)}</dd>
-                  </div>
-                )}
-                <div className="flex justify-between border-t border-stone-200 pt-3 text-lg font-semibold">
-                  <dt>মোট</dt>
-                  <dd className="text-brand-700">৳{total.toFixed(2)}</dd>
-                </div>
-              </dl>
-            </aside>
           </motion.div>
         </motion.div>
       </section>
@@ -511,15 +551,19 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
               initial={{ scale: 0.94, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.94, opacity: 0 }}
-              className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl"
+              className="w-full max-w-md rounded-sm bg-white p-6 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-xl font-semibold">অর্ডার কনফার্ম?</h3>
-              <p className="mt-2 text-sm text-stone-600">
-                {productName} × {lineItem.quantity}
-              </p>
+              <ul className="mt-2 space-y-1 text-sm text-stone-600">
+                {orderItems.map((item) => (
+                  <li key={cartLineKey(item)}>
+                    {item.name} × {item.quantity}
+                  </li>
+                ))}
+              </ul>
               <p className="text-2xl font-bold text-brand-700">৳{total.toFixed(2)}</p>
-              <div className="mt-4 rounded-lg bg-stone-50 p-4 text-sm">
+              <div className="mt-4 rounded-sm bg-stone-50 p-4 text-sm">
                 <p className="font-semibold">{customerName}</p>
                 <p>{customerPhone}</p>
                 <p className="mt-2">{fullAddress}</p>
@@ -529,7 +573,7 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
                   type="button"
                   disabled={placing}
                   onClick={() => setConfirmOpen(false)}
-                  className="flex-1 rounded-lg border py-3 text-sm font-semibold"
+                  className="flex-1 rounded-sm border py-3 text-sm font-semibold"
                 >
                   পিছনে
                 </button>
@@ -537,7 +581,7 @@ export default function LandingCheckout({ lineItem, productName, showPreorder })
                   type="button"
                   disabled={placing}
                   onClick={placeOrder}
-                  className="flex-1 rounded-lg bg-brand-600 py-3 text-sm font-semibold text-white"
+                  className="flex-1 rounded-sm bg-brand-600 py-3 text-sm font-semibold text-white"
                 >
                   {placing ? '…' : 'হ্যাঁ, অর্ডার দিন'}
                 </button>

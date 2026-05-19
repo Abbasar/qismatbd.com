@@ -12,7 +12,7 @@ import { getAuthHeader, getCurrentUser } from '../utils/auth';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { addToCart, getCart, updateQuantity, updateCartItem, cartLineKey, removeFromCart, CART_UPDATED_EVENT } from '../utils/cart';
 import { CheckoutSkeleton } from '../components/Skeletons';
-import { canPurchaseProduct, maxOrderQuantity, withDefaultUnitSelection } from '../utils/productAvailability';
+import { canPurchaseProduct, maxOrderQuantity, withDefaultUnitSelection, sortProductsByAvailability } from '../utils/productAvailability';
 import { resolveImageUrl } from '../utils/image';
 
 const steps = ['Details, delivery & payment', 'Review'];
@@ -243,7 +243,7 @@ function Checkout() {
     };
     pushInOrder(sameCategory);
     pushInOrder(notInCart);
-    return Array.from(byId.values());
+    return sortProductsByAvailability(Array.from(byId.values()));
   }, [catalogProducts, cartProductIds, items]);
 
   const fieldsOk = useMemo(() => {
@@ -489,8 +489,8 @@ function Checkout() {
           ))}
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
-          <section className="rounded-sm border border-stone-200/90 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
+          <section className="order-2 rounded-sm border border-stone-200/90 bg-white p-5 shadow-sm sm:p-6 lg:order-1">
             <AnimatePresence mode="wait">
               {step === 0 && (
                 <motion.div
@@ -737,7 +737,7 @@ function Checkout() {
             </AnimatePresence>
           </section>
 
-          <aside className="h-fit space-y-3 rounded-sm border border-stone-200/90 bg-white p-5 shadow-sm lg:sticky lg:top-28 sm:p-6">
+          <aside className="order-1 h-fit space-y-3 rounded-sm border border-stone-200/90 bg-white p-5 shadow-sm sm:p-6 lg:order-2 lg:sticky lg:top-28">
             <h3 className="text-lg font-semibold text-stone-900">Order summary</h3>
             {items.length === 0 ? (
               <p className="text-sm text-stone-600">Your cart is empty.</p>

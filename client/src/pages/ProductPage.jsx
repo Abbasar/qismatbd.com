@@ -17,6 +17,7 @@ import {
   customerFacingStockLabel,
   maxOrderQuantity,
   withDefaultUnitSelection,
+  sortProductsByAvailability,
 } from '../utils/productAvailability';
 
 function ProductPage() {
@@ -80,16 +81,17 @@ function ProductPage() {
             allProducts = [];
           }
         }
-        const related = allProducts
-          .filter((p) => p.id !== data.id && (p.category || '') === (data.category || ''))
-          .slice(0, 4);
+        const related = sortProductsByAvailability(
+          allProducts.filter(
+            (p) => p.id !== data.id && (p.category || '') === (data.category || '')
+          )
+        ).slice(0, 4);
         const fallback =
           related.length >= 4
             ? related
-            : allProducts
-                .filter((p) => p.id !== data.id)
-                .sort(() => Math.random() - 0.5)
-                .slice(0, 4);
+            : sortProductsByAvailability(
+                allProducts.filter((p) => p.id !== data.id)
+              ).slice(0, 4);
         setRelatedProducts(fallback);
       } catch (error) {
         console.error(error);

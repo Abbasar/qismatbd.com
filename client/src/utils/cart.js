@@ -21,6 +21,27 @@ export const saveCart = (items) => {
   window.dispatchEvent(new CustomEvent(CART_EVENT, { detail: { items } }));
 };
 
+/** Insert or update one line; drop `previousKey` when unit/variant changed. */
+export const syncCartLine = (product, previousKey = null) => {
+  let cart = getCart();
+  if (previousKey && previousKey !== cartLineKey(product)) {
+    cart = cart.filter((item) => cartLineKey(item) !== previousKey);
+  }
+  const payload = { ...product };
+  if (!payload.selectedSize) delete payload.selectedSize;
+  if (!payload.selectedColor) delete payload.selectedColor;
+  const key = cartLineKey(payload);
+  const qty = Number(payload.quantity) || 1;
+  const idx = cart.findIndex((item) => cartLineKey(item) === key);
+  if (idx >= 0) {
+    cart[idx] = { ...cart[idx], ...payload, quantity: qty };
+  } else {
+    cart.push({ ...payload, quantity: qty });
+  }
+  saveCart(cart);
+  return { key, cart };
+};
+
 export const addToCart = (product) => {
   const cart = getCart();
   const payload = { ...product };

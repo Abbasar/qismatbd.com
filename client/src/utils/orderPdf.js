@@ -176,15 +176,9 @@ export async function downloadOrderPdf(order) {
 }
 
 /**
- * Opens a print-friendly invoice in a new tab and invokes the browser print dialog.
+ * HTML invoice for browser print (admin).
  */
-export function printOrderSheet(order) {
-  const w = window.open('', '_blank', 'noopener,noreferrer,width=840,height=960');
-  if (!w) {
-    toast.error('Pop-up was blocked. Allow pop-ups for this site to print.');
-    return;
-  }
-
+function buildOrderPrintHtml(order) {
   const lineItems = parseOrderItems(order);
   const rows =
     lineItems.length > 0
@@ -225,7 +219,7 @@ export function printOrderSheet(order) {
     ? `<div class="extras">${extras.map((x) => `<p>${esc(x)}</p>`).join('')}</div>`
     : '';
 
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -248,12 +242,10 @@ export function printOrderSheet(order) {
     .totals p { display: flex; justify-content: space-between; max-width: 280px; margin-left: auto; }
     .totals .grand { font-weight: 700; font-size: 12pt; margin-top: 8px; padding-top: 8px; border-top: 2px solid #0f172a; }
     .discount { color: #166534; }
-    .no-print { margin: 0 0 12px; font-size: 10pt; color: #64748b; }
-    @media print { body { padding: 10mm; } .no-print { display: none !important; } }
+    @media print { body { padding: 10mm; } }
   </style>
 </head>
 <body>
-  <p class="no-print">Print dialog will open automatically. Choose your printer and press Print.</p>
   <h1>Order #${esc(String(order.id))}</h1>
   <p class="muted">Status: <strong>${esc(order.status || '—')}</strong> · Placed: ${esc(formatPlacedAt(order.created_at))}</p>
 
@@ -285,18 +277,61 @@ export function printOrderSheet(order) {
     }
     <p class="grand"><span>Order total</span><span>৳${Number(order.total_price || 0).toFixed(2)}</span></p>
   </div>
-  <script>
-    window.addEventListener('load', function () {
-      setTimeout(function () {
-        window.focus();
-        window.print();
-      }, 150);
-    });
-  </script>
 </body>
 </html>`;
+}
 
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+/**
+ * Opens a print-friendly invoice via a hidden iframe (no pop-up blocker).
+ */
+export function printOrderSheet(order) {
+  const html = buildOrderPrintHtml(order);
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('title', `Print order #${order.id}`);
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    if (iframe.parentNode) iframe.remove();
+  };
+
+  const win = iframe.contentWindow;
+  const doc = iframe.contentDocument || win?.document;
+  if (!win || !doc) {
+    toast.error('Could not open print view');
+    cleanup();
+    return;
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  const doPrint = () => {
+    try {
+      win.focus();
+      win.print();
+    } catch (e) {
+      console.error(e);
+      toast.error('Could not print');
+      cleanup();
+    }
+  };
+
+  win.addEventListener(
+    'afterprint',
+    () => {
+      window.clearTimeout(fallbackTimer);
+      cleanup();
+    },
+    { once: true }
+  );
+  const fallbackTimer = window.setTimeout(cleanup, 120000);
+
+  if (doc.readyState === 'complete') {
+    window.setTimeout(doPrint, 150);
+  } else {
+    iframe.onload = () => window.setTimeout(doPrint, 150);
+  }
 }

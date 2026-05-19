@@ -11,6 +11,7 @@ import {
   customerFacingStockLabel,
   isPreorderProduct,
   withDefaultUnitSelection,
+  sortProductsByAvailability,
 } from '../utils/productAvailability';
 
 function Shop() {
@@ -81,7 +82,7 @@ function Shop() {
       });
     }
 
-    return result;
+    return sortProductsByAvailability(result);
   }, [products, searchQuery, categoryFilter, brandFilter, priceFilter]);
 
   const paginatedProducts = useMemo(() => {

@@ -13,6 +13,7 @@ import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { ProductCardSkeleton } from '../components/Skeletons';
 import { resolveImageUrl } from '../utils/image';
 import { formatCategoryHeroLabel, parseCategoriesApiResponse } from '../utils/categories';
+import { sortProductsByAvailability } from '../utils/productAvailability';
 
 const ALL_PRODUCTS_HERO_IMAGE =
   'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=400&q=80';
@@ -122,9 +123,9 @@ function Home() {
         ]);
         if (!highlightsRes.ok || !productsRes.ok) throw new Error('Unable to load highlights');
         const [highlightData, allProducts] = await Promise.all([highlightsRes.json(), productsRes.json()]);
-        setNewArrivals(highlightData.newArrivals || []);
-        setPopularProducts(highlightData.popular || []);
-        setFeaturedProducts((allProducts || []).slice(0, 8));
+        setNewArrivals(sortProductsByAvailability(highlightData.newArrivals || []));
+        setPopularProducts(sortProductsByAvailability(highlightData.popular || []));
+        setFeaturedProducts(sortProductsByAvailability(allProducts || []).slice(0, 8));
         if (catRes.ok) {
           const c = await catRes.json();
           const { categories: catNames, images } = parseCategoriesApiResponse(c);

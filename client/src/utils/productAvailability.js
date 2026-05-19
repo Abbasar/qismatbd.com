@@ -60,6 +60,20 @@ export function displayPriceRange(product) {
   return { min: base, max: base, single: true };
 }
 
+/** 0 = in stock, 1 = pre-order, 2 = out of stock — for storefront sorting. */
+export function productAvailabilityRank(product) {
+  if (!product) return 2;
+  if (Number(product.stock) > 0) return 0;
+  if (isPreorderProduct(product)) return 1;
+  return 2;
+}
+
+/** In-stock first, then pre-order, then out-of-stock (stable within each group). */
+export function sortProductsByAvailability(products) {
+  if (!Array.isArray(products)) return [];
+  return [...products].sort((a, b) => productAvailabilityRank(a) - productAvailabilityRank(b));
+}
+
 /** For list quick-add: use first unit row so cart price / line key match checkout. */
 export function withDefaultUnitSelection(product) {
   if (!product) return product;

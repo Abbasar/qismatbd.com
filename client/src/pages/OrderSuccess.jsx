@@ -6,7 +6,7 @@ import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { getAuthHeader } from '../utils/auth';
 import { getCurrentUser } from '../utils/auth';
 import { addToCart, buyNow } from '../utils/cart';
-import { canPurchaseProduct, withDefaultUnitSelection } from '../utils/productAvailability';
+import { canPurchaseProduct, withDefaultUnitSelection, sortProductsByAvailability } from '../utils/productAvailability';
 import { resolveImageUrl } from '../utils/image';
 import { toast } from 'sonner';
 
@@ -107,7 +107,9 @@ function OrderSuccess() {
           if (!Number.isFinite(id) || orderedIds.has(id) || byId.has(id)) continue;
           byId.set(id, product);
         }
-        setSuggestedProducts(Array.from(byId.values()).slice(0, 12));
+        setSuggestedProducts(
+          sortProductsByAvailability(Array.from(byId.values())).slice(0, 12)
+        );
       } catch {
         setSuggestedProducts([]);
       }

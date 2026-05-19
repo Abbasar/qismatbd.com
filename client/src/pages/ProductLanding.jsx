@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
@@ -13,7 +13,10 @@ import {
   displayPriceRange,
   isPreorderProduct,
   maxOrderQuantity,
+  sortProductsByAvailability,
+  withDefaultUnitSelection,
 } from '../utils/productAvailability';
+import { cartLineKey, saveCart } from '../utils/cart';
 
 const fade = {
   initial: { opacity: 0, y: 20 },
@@ -30,10 +33,14 @@ function ProductLanding() {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
   const [otherProducts, setOtherProducts] = useState([]);
+  const [orderItems, setOrderItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
+  const [showStickyPrice, setShowStickyPrice] = useState(false);
+  const optionsRef = useRef(null);
+  const prevMainKeyRef = useRef(null);
   useEffect(() => {
     const load = async () => {
       try {
@@ -57,7 +64,12 @@ function ProductLanding() {
           const raw = await allRes.json().catch(() => []);
           all = Array.isArray(raw) ? raw : [];
         }
-        setOtherProducts(all.filter((p) => p.id !== data.id).slice(0, 8));
+        const sameCategory = sortProductsByAvailability(
+          all.filter(
+            (p) => p.id !== data.id && (p.category || '') === (data.category || '')
+          )
+        ).slice(0, 8);
+        setOtherProducts(sameCategory);
       } catch {
         setProduct(null);
         toast.error('এই অফার পেজটি উপলব্ধ নয়।');
@@ -106,6 +118,84 @@ function ProductLanding() {
     };
   }, [product, unitPrice, quantity, selectedSize, selectedColor, needsUnit, colors.length]);
 
+  const lineTotal = unitPrice * quantity;
+
+  useEffect(() => {
+    prevMainKeyRef.current = null;
+    setOrderItems([]);
+  }, [id]);
+
+  useEffect(() => {
+    if (!lineItem) return;
+    const key = cartLineKey(lineItem);
+    setOrderItems((prev) => {
+      let next = prev;
+      if (prevMainKeyRef.current && prevMainKeyRef.current !== key) {
+        next = next.filter((i) => cartLineKey(i) !== prevMainKeyRef.current);
+      }
+      prevMainKeyRef.current = key;
+      const others = next.filter((i) => Number(i.id) !== Number(lineItem.id));
+      return [lineItem, ...others];
+    });
+  }, [lineItem]);
+
+  useEffect(() => {
+    if (orderItems.length > 0) saveCart(orderItems);
+  }, [orderItems]);
+
+  const handleOrderQuantityChange = (lineKey, newQty) => {
+    const item = orderItems.find((i) => cartLineKey(i) === lineKey);
+    if (!item) return;
+
+    if (newQty <= 0) {
+      if (product && Number(item.id) === Number(product.id)) {
+        toast.error('মূল পণ্য সরানো যাবে না');
+        return;
+      }
+      setOrderItems((prev) => prev.filter((i) => cartLineKey(i) !== lineKey));
+      return;
+    }
+
+    const maxQty = maxOrderQuantity(item);
+    const qty = Math.min(maxQty || newQty, Math.max(1, newQty));
+
+    setOrderItems((prev) =>
+      prev.map((i) => (cartLineKey(i) === lineKey ? { ...i, quantity: qty } : i))
+    );
+
+    if (lineItem && cartLineKey(lineItem) === lineKey) {
+      setQuantity(qty);
+    }
+  };
+
+  const handleAddOtherProduct = (line) => {
+    const key = cartLineKey(line);
+    setOrderItems((prev) => {
+      const idx = prev.findIndex((i) => cartLineKey(i) === key);
+      if (idx >= 0) {
+        const updated = [...prev];
+        const maxQty = maxOrderQuantity(updated[idx]);
+        const newQty = Math.min((updated[idx].quantity || 1) + 1, maxQty || 99);
+        updated[idx] = { ...updated[idx], quantity: newQty };
+        return updated;
+      }
+      return [...prev, { ...line, quantity: 1 }];
+    });
+    toast.success('সারাংশে যোগ হয়েছে');
+    document.getElementById('checkout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  useEffect(() => {
+    const el = optionsRef.current;
+    if (!el || !product) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowStickyPrice(!entry.isIntersecting),
+      { threshold: 0, rootMargin: '-64px 0px 0px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [product]);
+
   const scrollToCheckout = () => {
     if (!canPurchaseProduct(product)) {
       toast.error('স্টকে নেই।');
@@ -132,7 +222,7 @@ function ProductLanding() {
 
   if (!product) {
     return (
-      <motion.div className="rounded-lg border border-stone-200 bg-white p-10 text-center shadow-sm">
+      <motion.div className="rounded-sm border border-stone-200 bg-white p-10 text-center shadow-sm">
         <p className="text-stone-700">এই অফার পেজটি উপলব্ধ নয়।</p>
         <Link to="/shop" className="mt-4 inline-block text-sm font-semibold text-brand-700 hover:underline">
           শপে যান
@@ -155,6 +245,28 @@ function ProductLanding() {
         <meta property="og:image" content={heroSrc} />
       </Helmet>
 
+      {showStickyPrice && canOrder && (
+        <div className="sticky top-14 z-40 border-b border-stone-200/90 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur-md sm:top-16 sm:px-4">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-stone-900">{product.name}</p>
+              <p className="mt-0.5 text-xs text-stone-600">
+                {selectedSize ? `${selectedSize} · ` : ''}
+                প্রতি পিস ৳{unitPrice.toFixed(0)} × {quantity} ={' '}
+                <span className="font-semibold text-brand-700">৳{lineTotal.toFixed(0)}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={scrollToCheckout}
+              className="shrink-0 rounded-sm bg-brand-600 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-700 sm:text-sm"
+            >
+              {showPreorder ? 'প্রি-অর্ডার' : 'অর্ডার করুন'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-8 pb-14 sm:space-y-10 lg:space-y-12">
         <LandingHero
           productName={product.name}
@@ -165,20 +277,21 @@ function ProductLanding() {
         {/* Product options — variant & quantity */}
         <motion.section
           {...fade}
+          ref={optionsRef}
           className="mx-auto max-w-6xl px-3 sm:px-4"
         >
-          <div className="rounded-lg border border-stone-200/90 bg-white p-4 shadow-md shadow-stone-200/25 sm:p-6">
+          <div className="rounded-sm border border-stone-200/90 bg-white p-4 shadow-md shadow-stone-200/25 sm:p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex gap-4">
                 <img
                   src={heroSrc}
                   alt=""
-                  className="h-20 w-20 shrink-0 rounded-lg border border-stone-100 object-cover shadow-sm sm:h-24 sm:w-24"
+                  className="h-20 w-20 shrink-0 rounded-sm border border-stone-100 object-cover shadow-sm sm:h-24 sm:w-24"
                 />
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">অপশন বেছে নিন</p>
+                  {/* <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">অপশন বেছে নিন</p> */}
                   <p className="mt-1 text-lg font-semibold text-stone-900 sm:text-xl">{product.name}</p>
-                  <p className="mt-0.5 text-sm text-stone-500">পরিমাণ সিলেক্ট করুন</p>
+                  {/* <p className="mt-0.5 text-sm text-stone-500">পরিমাণ সিলেক্ট করুন</p> */}
                 </div>
               </div>
 
@@ -189,22 +302,44 @@ function ProductLanding() {
                     <div className="flex flex-wrap gap-2">
                       {pricingOpts.map((opt) => {
                         const label = String(opt.label || '').trim();
+                        const p = Number(opt.price);
+                        const showP = Number.isFinite(p);
                         return (
                           <button
                             key={label}
                             type="button"
                             onClick={() => setSelectedSize(label)}
-                            className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                            className={`rounded-sm border px-3 py-2 text-sm font-semibold transition ${
                               selectedSize === label
                                 ? 'border-brand-600 bg-brand-600 text-white shadow-md'
                                 : 'border-stone-200 hover:border-brand-300'
                             }`}
                           >
-                            {label}
+                            <span>{label}</span>
+                            {showP ? (
+                              <span
+                                className={`ml-2 text-xs font-normal ${
+                                  selectedSize === label ? 'text-white/90' : 'text-stone-500'
+                                }`}
+                              >
+                                ৳{p.toFixed(0)}
+                              </span>
+                            ) : null}
                           </button>
                         );
                       })}
                     </div>
+                    {/* <p className="mt-2 text-sm text-stone-600">
+                      প্রতি পিস:{' '}
+                      <span className="font-semibold text-stone-900">৳{unitPrice.toFixed(0)}</span>
+                      {quantity > 1 ? (
+                        <>
+                          {' · '}
+                          মোট:{' '}
+                          <span className="font-semibold text-brand-700">৳{lineTotal.toFixed(0)}</span>
+                        </>
+                      ) : null}
+                    </p> */}
                   </div>
                 )}
 
@@ -217,7 +352,7 @@ function ProductLanding() {
                           key={s}
                           type="button"
                           onClick={() => setSelectedSize(s)}
-                          className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                          className={`rounded-sm border px-3 py-2 text-sm font-semibold ${
                             selectedSize === s ? 'border-brand-600 bg-brand-600 text-white' : 'border-stone-200'
                           }`}
                         >
@@ -225,6 +360,17 @@ function ProductLanding() {
                         </button>
                       ))}
                     </div>
+                    <p className="mt-2 text-sm text-stone-600">
+                      প্রতি পিস:{' '}
+                      <span className="font-semibold text-stone-900">৳{unitPrice.toFixed(0)}</span>
+                      {quantity > 1 ? (
+                        <>
+                          {' · '}
+                          মোট:{' '}
+                          <span className="font-semibold text-brand-700">৳{lineTotal.toFixed(0)}</span>
+                        </>
+                      ) : null}
+                    </p>
                   </div>
                 )}
 
@@ -237,7 +383,7 @@ function ProductLanding() {
                           key={c}
                           type="button"
                           onClick={() => setSelectedColor(c)}
-                          className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                          className={`rounded-sm border px-3 py-2 text-sm font-semibold ${
                             selectedColor === c ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-stone-200'
                           }`}
                         >
@@ -248,24 +394,33 @@ function ProductLanding() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center rounded-lg border border-stone-200 bg-stone-50">
-                    <button
-                      type="button"
-                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                      className="h-11 w-11 text-lg font-medium hover:bg-white"
-                    >
-                      −
-                    </button>
-                    <span className="min-w-[2.5rem] text-center font-semibold">{quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => setQuantity((q) => Math.min(maxQty || q, q + 1))}
-                      disabled={maxQty > 0 && quantity >= maxQty}
-                      className="h-11 w-11 text-lg font-medium hover:bg-white disabled:opacity-40"
-                    >
-                      +
-                    </button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center rounded-sm border border-stone-200 bg-stone-50">
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                        className="h-11 w-11 text-lg font-medium hover:bg-white"
+                      >
+                        −
+                      </button>
+                      <span className="min-w-[2.5rem] text-center font-semibold">{quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((q) => Math.min(maxQty || q, q + 1))}
+                        disabled={maxQty > 0 && quantity >= maxQty}
+                        className="h-11 w-11 text-lg font-medium hover:bg-white disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <p className="text-sm text-stone-600">
+                      {/* প্রতি পিস{' '}
+                      <span className="font-semibold text-stone-900">৳{unitPrice.toFixed(0)}</span>
+                      {' · '} */}
+                      মোট{' '}
+                      <span className="font-semibold text-brand-700">৳{lineTotal.toFixed(0)}</span>
+                    </p>
                   </div>
                   <motion.button
                     type="button"
@@ -273,7 +428,7 @@ function ProductLanding() {
                     whileTap={{ scale: canOrder ? 0.98 : 1 }}
                     onClick={scrollToCheckout}
                     disabled={!canOrder}
-                    className="flex-1 rounded-lg bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-brand-600/20 hover:bg-brand-700 disabled:bg-stone-300"
+                    className="w-full rounded-sm bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-brand-600/20 hover:bg-brand-700 disabled:bg-stone-300 sm:w-auto sm:flex-1"
                   >
                     {showPreorder ? 'প্রি-অর্ডার' : 'অর্ডার করুন ↓'}
                   </motion.button>
@@ -285,7 +440,11 @@ function ProductLanding() {
 
         {/* Inline checkout */}
         <div className="mx-auto max-w-6xl px-3 sm:px-4">
-          <LandingCheckout lineItem={lineItem} productName={product.name} showPreorder={showPreorder} />
+          <LandingCheckout
+            orderItems={orderItems}
+            showPreorder={showPreorder}
+            onQuantityChange={handleOrderQuantityChange}
+          />
         </div>
 
         {/* More products */}
@@ -301,6 +460,7 @@ function ProductLanding() {
               {otherProducts.map((p, i) => {
                 const pr = displayPriceRange(p);
                 const priceLabel = pr.single ? `৳${pr.min.toFixed(0)}` : `From ৳${pr.min.toFixed(0)}`;
+                const line = withDefaultUnitSelection(p);
                 return (
                   <motion.div
                     key={p.id}
@@ -308,7 +468,7 @@ function ProductLanding() {
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
                     transition={{ delay: Math.min(i * 0.04, 0.2) }}
-                    className="group overflow-hidden rounded-lg border border-stone-200 bg-white shadow-sm transition hover:shadow-md"
+                    className="group flex flex-col overflow-hidden rounded-sm border border-stone-200 bg-white shadow-sm transition hover:shadow-md"
                   >
                     <Link to={`/product/${p.id}`} className="block overflow-hidden">
                       <img
@@ -318,7 +478,7 @@ function ProductLanding() {
                         loading="lazy"
                       />
                     </Link>
-                    <div className="p-2.5 sm:p-4">
+                    <div className="flex flex-1 flex-col p-2.5 sm:p-4">
                       <Link
                         to={`/product/${p.id}`}
                         className="line-clamp-2 text-sm font-semibold leading-snug text-stone-900 hover:text-brand-600 sm:text-base"
@@ -326,6 +486,16 @@ function ProductLanding() {
                         {p.name}
                       </Link>
                       <p className="mt-0.5 text-xs text-stone-600 sm:mt-1 sm:text-sm">{priceLabel}</p>
+                      <div className="mt-auto pt-2.5 sm:pt-3">
+                        <button
+                          type="button"
+                          onClick={() => handleAddOtherProduct({ ...line, quantity: 1 })}
+                          disabled={!canPurchaseProduct(p)}
+                          className="w-full rounded-sm bg-brand-600 py-1.5 text-[10px] font-semibold text-white transition hover:bg-brand-700 disabled:bg-stone-300 sm:py-2 sm:text-sm"
+                        >
+                          Add to cart
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 );
