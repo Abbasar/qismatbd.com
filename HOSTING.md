@@ -4,13 +4,6 @@
 
 ---
 
-## ১) MySQL (cPanel)
-
-1. **MySQL® Databases** এ ডাটাবেজ `qismyirz_qismat` ও ইউজার বানিয়ে অল প্রিভিলেজ দিন।
-2. **phpMyAdmin** → ওই ডাটাবেস সিলেক্ট → **Import** → `server/structure.sql` তারপর `server/data.sql`।
-
----
-
 ## ২) Backend (Node API)
 
 1. পিসিতে: `server` ফোল্ডারে `.env` তৈরি — `server/.env.example` কপি করে ভরুন  
