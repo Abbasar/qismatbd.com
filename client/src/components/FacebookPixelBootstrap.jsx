@@ -1,10 +1,16 @@
 import { useEffect } from 'react';
 import { apiUrl, fetchWithTimeout } from '../utils/api';
+import {
+  createMetaEventId,
+  getMetaFbc,
+  getMetaFbp,
+  getMetaEventSourceUrl,
+} from '../utils/metaAttribution';
 
 /**
- * Meta Pixel (ব্রাউজার) — Admin-এর facebook_pixel_id থাকলে লোড হয়
- * PageView: সাইট খোলার সময় | Purchase: OrderSuccess.jsx-এ
- * সার্ভার CAPI: server/utils/facebookCapi.js (আলাদা token লাগে)
+ * Meta Pixel (ব্রাউজার) + CAPI PageView dedup — Admin facebook_pixel_id থাকলে লোড
+ * PageView: একই event_id ব্রাউজার + POST /api/meta/event (আসল IP)
+ * Purchase: OrderSuccess.jsx (eventID = purchase-order-{id})
  */
 export default function FacebookPixelBootstrap() {
   useEffect(() => {
@@ -41,7 +47,19 @@ export default function FacebookPixelBootstrap() {
         })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
 
         window.fbq('init', pixelId);
-        window.fbq('track', 'PageView');
+        const pageViewEventId = createMetaEventId('pageview');
+        window.fbq('track', 'PageView', {}, { eventID: pageViewEventId });
+        fetch(apiUrl('/api/meta/event'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_name: 'PageView',
+            event_id: pageViewEventId,
+            event_source_url: getMetaEventSourceUrl(),
+            fbp: getMetaFbp(),
+            fbc: getMetaFbc(),
+          }),
+        }).catch(() => {});
       } catch {
         /* optional marketing script */
       }

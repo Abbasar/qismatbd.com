@@ -1,4 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { FreeMode, Pagination } from 'swiper/modules';
+import 'swiper/css';
+import 'swiper/css/pagination';
+import 'swiper/css/free-mode';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
@@ -32,6 +37,7 @@ function ProductPage() {
   const [selectedColor, setSelectedColor] = useState('');
   const [isInWishlist, setIsInWishlist] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
+  const gallerySwiperRef = useRef(null);
   const user = getCurrentUser();
 
   useEffect(() => {
@@ -122,6 +128,13 @@ function ProductPage() {
     const next = activeGalleryIndex + delta;
     const wrapped = ((next % gallery.length) + gallery.length) % gallery.length;
     setActiveImg(gallery[wrapped]);
+    gallerySwiperRef.current?.slideTo(wrapped);
+  };
+
+  const selectGalleryImage = (index) => {
+    if (index < 0 || index >= gallery.length) return;
+    setActiveImg(gallery[index]);
+    gallerySwiperRef.current?.slideTo(index);
   };
 
   const sizes = Array.isArray(product?.sizes) ? product.sizes : [];
@@ -266,32 +279,75 @@ function ProductPage() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
-            className="space-y-4 lg:sticky lg:top-24"
+            className="min-w-0 w-full max-w-full space-y-4 overflow-hidden lg:sticky lg:top-24"
           >
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setZoomOpen(true)}
-                className="group relative block w-full overflow-hidden rounded-sm border border-stone-200/90 bg-white shadow-sm"
-              >
-                <img
-                  src={activeSrc}
-                  alt={product.name}
-                  decoding="async"
-                  loading="eager"
-                  className="h-[min(420px,70vw)] w-full object-cover transition duration-700 ease-out group-hover:scale-[1.06] sm:h-[480px]"
-                />
-                <span className="pointer-events-none absolute bottom-3 right-3 rounded-sm bg-white/90 px-3 py-1 text-xs font-semibold text-stone-700 shadow-sm backdrop-blur">
-                  Tap to zoom
-                </span>
-              </button>
-              {gallery.length > 1 && (
+            <div className="relative min-w-0 w-full max-w-full overflow-hidden">
+              {gallery.length === 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setZoomOpen(true)}
+                  className="group relative block w-full max-w-full overflow-hidden rounded-sm border border-stone-200/90 bg-white shadow-sm"
+                >
+                  <img
+                    src={activeSrc}
+                    alt={product.name}
+                    decoding="async"
+                    loading="eager"
+                    className="aspect-square w-full max-w-full object-cover transition duration-700 ease-out group-hover:scale-[1.03] sm:aspect-auto sm:h-[min(480px,70vw)]"
+                  />
+                  <span className="pointer-events-none absolute bottom-3 right-3 rounded-sm bg-white/90 px-3 py-1 text-xs font-semibold text-stone-700 shadow-sm backdrop-blur">
+                    Tap to zoom
+                  </span>
+                </button>
+              ) : (
                 <>
+                  <Swiper
+                    modules={[Pagination]}
+                    slidesPerView={1}
+                    spaceBetween={0}
+                    grabCursor
+                    resistanceRatio={0.65}
+                    initialSlide={activeGalleryIndex}
+                    onSwiper={(swiper) => {
+                      gallerySwiperRef.current = swiper;
+                    }}
+                    onSlideChange={(swiper) => {
+                      const img = gallery[swiper.activeIndex];
+                      if (img && img !== activeImg) setActiveImg(img);
+                    }}
+                    pagination={{
+                      clickable: true,
+                      dynamicBullets: gallery.length > 6,
+                    }}
+                    className="product-gallery-swiper w-full max-w-full overflow-hidden rounded-sm border border-stone-200/90 bg-white shadow-sm [&_.swiper-pagination]:!bottom-3 [&_.swiper-pagination-bullet]:h-2 [&_.swiper-pagination-bullet]:w-2 [&_.swiper-pagination-bullet]:bg-stone-300 [&_.swiper-pagination-bullet]:opacity-100 [&_.swiper-pagination-bullet-active]:w-7 [&_.swiper-pagination-bullet-active]:rounded-full [&_.swiper-pagination-bullet-active]:bg-brand-600"
+                  >
+                    {gallery.map((g, slideIdx) => (
+                      <SwiperSlide key={`${g}-slide-${slideIdx}`} className="!w-full">
+                        <button
+                          type="button"
+                          onClick={() => setZoomOpen(true)}
+                          className="group relative block w-full max-w-full overflow-hidden"
+                        >
+                          <img
+                            src={resolveImageUrl(g)}
+                            alt={`${product.name} — photo ${slideIdx + 1}`}
+                            decoding="async"
+                            loading={slideIdx === 0 ? 'eager' : 'lazy'}
+                            draggable={false}
+                            className="aspect-square w-full max-w-full object-cover transition duration-700 ease-out group-hover:scale-[1.03] sm:aspect-auto sm:h-[min(480px,70vw)]"
+                          />
+                          <span className="pointer-events-none absolute bottom-3 right-3 rounded-sm bg-white/90 px-3 py-1 text-xs font-semibold text-stone-700 shadow-sm backdrop-blur">
+                            Tap to zoom
+                          </span>
+                        </button>
+                      </SwiperSlide>
+                    ))}
+                  </Swiper>
                   <button
                     type="button"
                     aria-label="Previous photo"
                     onClick={() => goGallery(-1)}
-                    className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-sm border border-stone-200/90 bg-white/95 p-2 text-stone-800 shadow-md backdrop-blur transition hover:bg-sage-50 hover:border-brand-400"
+                    className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-sm border border-stone-200/90 bg-white/95 p-2 text-stone-800 shadow-md backdrop-blur transition hover:border-brand-400 hover:bg-sage-50"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -301,53 +357,50 @@ function ProductPage() {
                     type="button"
                     aria-label="Next photo"
                     onClick={() => goGallery(1)}
-                    className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-sm border border-stone-200/90 bg-white/95 p-2 text-stone-800 shadow-md backdrop-blur transition hover:bg-sage-50 hover:border-brand-400"
+                    className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-sm border border-stone-200/90 bg-white/95 p-2 text-stone-800 shadow-md backdrop-blur transition hover:border-brand-400 hover:bg-sage-50"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </button>
-                  <span className="pointer-events-none absolute bottom-16 left-1/2 z-10 hidden -translate-x-1/2 rounded-full bg-sage-900/85 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm lg:block">
+                  <span className="pointer-events-none absolute bottom-14 left-1/2 z-10 hidden -translate-x-1/2 rounded-full bg-sage-900/85 px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm md:block">
                     {activeGalleryIndex + 1} / {gallery.length}
                   </span>
                 </>
               )}
             </div>
             {gallery.length > 1 && (
-              <div className="flex justify-center gap-1.5 pb-2 pt-3 sm:hidden">
-                {gallery.map((g, dotIdx) => (
-                  <button
-                    key={`${g}-dot-${dotIdx}`}
-                    type="button"
-                    aria-label={`Photo ${dotIdx + 1}`}
-                    aria-current={activeGalleryIndex === dotIdx ? 'step' : undefined}
-                    onClick={() => setActiveImg(g)}
-                    className={`h-2 rounded-full transition ${
-                      activeGalleryIndex === dotIdx ? 'w-8 bg-brand-600' : 'w-2 bg-stone-300 hover:bg-stone-400'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-            {gallery.length > 1 && (
-              <div className="-mx-1 flex gap-2 overflow-x-auto pb-1 px-1">
-                {gallery.map((g, thumbIdx) => (
-                  <button
-                    key={`${g}-thumb-${thumbIdx}`}
-                    type="button"
-                    onClick={() => setActiveImg(g)}
-                    className={`h-16 w-16 shrink-0 overflow-hidden rounded-sm border transition ${
-                      activeImg === g ? 'border-brand-500 ring-2 ring-brand-200 ring-offset-2' : 'border-stone-200 hover:border-stone-300'
-                    }`}
-                  >
-                    <img
-                      src={resolveImageUrl(g)}
-                      alt=""
-                      loading={thumbIdx <= 4 ? 'eager' : 'lazy'}
-                      className="h-full w-full object-cover"
-                    />
-                  </button>
-                ))}
+              <div className="hidden min-w-0 w-full max-w-full overflow-hidden md:block">
+                <Swiper
+                  modules={[FreeMode]}
+                  freeMode
+                  slidesPerView="auto"
+                  spaceBetween={8}
+                  watchSlidesProgress
+                  className="product-thumb-swiper !overflow-hidden"
+                >
+                  {gallery.map((g, thumbIdx) => (
+                    <SwiperSlide key={`${g}-thumb-${thumbIdx}`} className="!w-auto">
+                      <button
+                        type="button"
+                        onClick={() => selectGalleryImage(thumbIdx)}
+                        className={`h-16 w-16 overflow-hidden rounded-sm border transition ${
+                          activeImg === g
+                            ? 'border-brand-500 ring-2 ring-inset ring-brand-200'
+                            : 'border-stone-200 hover:border-stone-300'
+                        }`}
+                      >
+                        <img
+                          src={resolveImageUrl(g)}
+                          alt=""
+                          loading={thumbIdx <= 4 ? 'eager' : 'lazy'}
+                          draggable={false}
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    </SwiperSlide>
+                  ))}
+                </Swiper>
               </div>
             )}
           </motion.div>

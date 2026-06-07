@@ -14,13 +14,9 @@ import { addToCart, getCart, updateQuantity, updateCartItem, cartLineKey, remove
 import { CheckoutSkeleton } from '../components/Skeletons';
 import { canPurchaseProduct, maxOrderQuantity, withDefaultUnitSelection, sortProductsByAvailability } from '../utils/productAvailability';
 import { resolveImageUrl } from '../utils/image';
+import { metaOrderPayload } from '../utils/metaAttribution';
 
 const steps = ['Details, delivery & payment', 'Review'];
-
-function readCookie(name) {
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return m ? decodeURIComponent(m[1]) : '';
-}
 
 function parseInsideDistricts(csv) {
   const raw =
@@ -425,8 +421,7 @@ function Checkout() {
           bKashNumber: bkashNumber,
           couponCode: appliedCoupon?.code || '',
           items,
-          facebook_fbp: readCookie('_fbp'),
-          facebook_fbc: readCookie('_fbc'),
+          ...metaOrderPayload(),
         }),
       });
 

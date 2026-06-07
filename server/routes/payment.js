@@ -7,14 +7,8 @@ const SSLCommerzPayment = require('sslcommerz-lts');
 const router = express.Router();
 const db = require('../db');
 const { getSslCommerzSettings } = require('../controllers/paymentController');
-const { sendFacebookPurchaseEvent } = require('../utils/facebookCapi');
+const { sendOrderPurchaseCapi } = require('../utils/facebookCapi');
 const { maybeAutoDispatchSteadfast } = require('../utils/steadfast');
-
-function clientIp(req) {
-    const x = req.headers['x-forwarded-for'];
-    if (x) return String(x).split(',')[0].trim();
-    return req.socket?.remoteAddress || '';
-}
 
 const frontendBaseUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
 
@@ -94,20 +88,9 @@ router.post('/success/:orderId', async (req, res) => {
             [orderId, paidAmount, card_type, 'Paid', tran_id]
         );
 
-        const [paidRows] = await db.query(
-            'SELECT customer_email, customer_phone, total_price FROM orders WHERE id = ? LIMIT 1',
-            [orderId]
-        );
-        const pr = paidRows[0];
-        if (pr) {
-            sendFacebookPurchaseEvent({
-                orderId,
-                value: pr.total_price,
-                email: pr.customer_email,
-                phone: pr.customer_phone,
-                clientIp: clientIp(req),
-                userAgent: req.headers['user-agent'],
-            }).catch(() => {});
+        const [paidRows] = await db.query('SELECT * FROM orders WHERE id = ? LIMIT 1', [orderId]);
+        if (paidRows[0]) {
+            sendOrderPurchaseCapi(paidRows[0]).catch(() => {});
         }
 
         res.redirect(`${frontendBaseUrl}/order-success?orderId=${orderId}`);

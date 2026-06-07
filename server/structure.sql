@@ -52,6 +52,14 @@ ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `return_status` VARCHAR(40) NOT NU
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `return_notes` TEXT NULL AFTER `return_status`;
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `cancellation_reason` TEXT NULL AFTER `return_notes`;
 ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `cancelled_at` TIMESTAMP NULL AFTER `cancellation_reason`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_fbp` VARCHAR(255) NULL AFTER `cancelled_at`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_fbc` VARCHAR(255) NULL AFTER `meta_fbp`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_client_ip` VARCHAR(45) NULL AFTER `meta_fbc`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_user_agent` VARCHAR(512) NULL AFTER `meta_client_ip`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_event_source_url` VARCHAR(2048) NULL AFTER `meta_user_agent`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_delivery_area` VARCHAR(80) NULL AFTER `meta_event_source_url`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_external_id` VARCHAR(64) NULL AFTER `meta_delivery_area`;
+ALTER TABLE `orders` ADD COLUMN IF NOT EXISTS `meta_capi_purchase_sent` TINYINT(1) NOT NULL DEFAULT 0 AFTER `meta_external_id`;
 ALTER TABLE `coupons` ADD COLUMN IF NOT EXISTS `restrict_product_ids` JSON NULL AFTER `is_active`;
 ALTER TABLE `coupons` ADD COLUMN IF NOT EXISTS `restrict_categories` JSON NULL AFTER `restrict_product_ids`;
 ALTER TABLE `orders` MODIFY COLUMN `payment_type` VARCHAR(40) NOT NULL;

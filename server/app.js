@@ -38,6 +38,8 @@ const galleryRoutes = require('./routes/gallery');
 const webhookRoutes = require('./routes/webhooks');
 const db = require('./db');
 const { ensureLandingColumns } = require('./utils/ensureLandingColumns');
+const { ensureMetaAttributionColumns } = require('./utils/ensureMetaAttributionColumns');
+const metaRoutes = require('./routes/meta');
 const { requireAuth, requireAdmin } = require('./middleware/auth');
 const { sendServerError, isProd } = require('./utils/httpError');
 
@@ -52,6 +54,9 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const app = express();
+
+/** cPanel / nginx / Cloudflare — required for real visitor IP in Meta CAPI. */
+app.set('trust proxy', true);
 
 /** Local dev / XAMPP — port 80 and :5173 are different browser origins. */
 const DEFAULT_CORS_ORIGINS = [
@@ -130,6 +135,13 @@ app.use('/api/locations', locationsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/webhooks', webhookRoutes);
+const metaLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/meta', metaLimiter, metaRoutes);
 app.use('/api', notificationRoutes);
 
 app.get('/api/health', async (req, res) => {
@@ -171,6 +183,7 @@ if (require.main === module) {
   (async () => {
     try {
       await ensureLandingColumns(db);
+      await ensureMetaAttributionColumns(db);
     } catch (err) {
       console.error('[migrate] Landing columns check failed:', err.message);
     }

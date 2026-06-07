@@ -15,11 +15,7 @@ import { apiUrl, fetchWithTimeout } from '../utils/api';
 import { resolveImageUrl } from '../utils/image';
 import { cartLineKey } from '../utils/cart';
 import { maxOrderQuantity } from '../utils/productAvailability';
-
-function readCookie(name) {
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return m ? decodeURIComponent(m[1]) : '';
-}
+import { metaOrderPayload } from '../utils/metaAttribution';
 
 function parseInsideDistricts(csv) {
   const raw =
@@ -259,8 +255,7 @@ export default function LandingCheckout({ orderItems, showPreorder, onQuantityCh
           bKashNumber: bkashNumber,
           couponCode: appliedCoupon?.code || '',
           items: orderItems,
-          facebook_fbp: readCookie('_fbp'),
-          facebook_fbc: readCookie('_fbc'),
+          ...metaOrderPayload(),
         }),
       });
       const data = await response.json().catch(() => ({}));

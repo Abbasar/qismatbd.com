@@ -20,16 +20,13 @@ const { createAdminNotification } = require('../utils/notifications');
 const { tryVerifyToken, requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendServerError } = require('../utils/httpError');
 const { computeCartSubtotalsForCoupon } = require('../utils/couponScope');
-const { sendFacebookPurchaseEvent } = require('../utils/facebookCapi');
+const {
+  captureAttributionFromRequest,
+  sendOrderPurchaseCapi,
+} = require('../utils/facebookCapi');
 const router = express.Router();
 
 const RETURN_STATUSES = new Set(['none', 'requested', 'approved', 'received', 'closed']);
-
-function clientIp(req) {
-  const x = req.headers['x-forwarded-for'];
-  if (x) return String(x).split(',')[0].trim();
-  return req.socket?.remoteAddress || '';
-}
 
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -429,6 +426,36 @@ router.post('/', async (req, res) => {
     conn = null;
 
     const orderId = result.insertId;
+
+    const attribution = captureAttributionFromRequest(req, {
+      customerName,
+      deliveryArea,
+      facebook_fbp,
+      facebook_fbc,
+      facebook_event_source_url: req.body.facebook_event_source_url,
+      userId: resolvedUserId,
+    });
+    try {
+      await db.query(
+        `UPDATE orders SET
+          meta_fbp = ?, meta_fbc = ?, meta_client_ip = ?, meta_user_agent = ?,
+          meta_event_source_url = ?, meta_delivery_area = ?, meta_external_id = ?
+         WHERE id = ?`,
+        [
+          attribution.meta_fbp || null,
+          attribution.meta_fbc || null,
+          attribution.meta_client_ip || null,
+          attribution.meta_user_agent || null,
+          attribution.meta_event_source_url || null,
+          attribution.meta_delivery_area || null,
+          attribution.meta_external_id || null,
+          orderId,
+        ]
+      );
+    } catch (e) {
+      if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+    }
+
     await createAdminNotification({
       type: 'order',
       title: 'New order placed',
@@ -492,16 +519,10 @@ router.post('/', async (req, res) => {
       throw new Error('Could not generate payment URL');
     }
 
-    sendFacebookPurchaseEvent({
-      orderId,
-      value: totalPrice,
-      email: customerEmail,
-      phone: customerPhone,
-      fbc: facebook_fbc,
-      fbp: facebook_fbp,
-      clientIp: clientIp(req),
-      userAgent: req.headers['user-agent'],
-    }).catch(() => {});
+    const [capiRows] = await db.query('SELECT * FROM orders WHERE id = ? LIMIT 1', [orderId]);
+    if (capiRows[0]) {
+      sendOrderPurchaseCapi(capiRows[0], { skipIfSent: false }).catch(() => {});
+    }
 
     res.json({
       orderId,

@@ -49,12 +49,35 @@ function OrderSuccess() {
     const total = order?.total_price ?? location.state?.totalPrice;
     const oid = order?.id ?? orderId;
     if (total == null || !oid || typeof window === 'undefined' || typeof window.fbq !== 'function') return;
+
+    let items = [];
+    const raw = order?.items;
+    if (Array.isArray(raw)) items = raw;
+    else if (raw) {
+      try {
+        items = JSON.parse(raw);
+      } catch {
+        items = [];
+      }
+    }
+    const contentIds = items.map((i) => (i?.id != null ? String(i.id) : '')).filter(Boolean);
+    const numItems = items.reduce(
+      (sum, i) => sum + Math.max(1, Math.floor(Number(i?.quantity) || 1)),
+      0
+    );
+
     purchasePixelFired.current = true;
     const eventID = `purchase-order-${oid}`;
     window.fbq(
       'track',
       'Purchase',
-      { value: Number(total), currency: 'BDT' },
+      {
+        value: Number(total),
+        currency: 'BDT',
+        content_type: 'product',
+        ...(contentIds.length ? { content_ids: contentIds } : {}),
+        ...(numItems > 0 ? { num_items: numItems } : {}),
+      },
       { eventID }
     );
   }, [order, orderId, location.state]);
