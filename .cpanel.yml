@@ -1,0 +1,5 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/hafbugvx/repositories/qismatbd.com
+    - echo "Deployment completed in the repository directory itself."
